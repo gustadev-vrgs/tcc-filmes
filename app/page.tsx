@@ -117,21 +117,12 @@ export default function Home() {
             <span className="brand-mark">AFX</span>
             <span>AskFilmX</span>
           </a>
-
-          <nav className="header-pills" aria-label="Recursos do AskFilmX">
-            <button type="button" onClick={() => setActiveTool("search")}>Busca</button>
-            <button type="button" onClick={() => setActiveTool("recommendation")}>IA generativa</button>
-            <span>Sem spoilers</span>
-          </nav>
         </header>
 
         <section className="catalog-intro" aria-labelledby="catalog-title">
-          <div>
-            <p className="eyebrow">Catálogo inteligente</p>
-            <h1 id="catalog-title">O que você quer assistir?</h1>
-            <p>Encontre filmes e séries ou peça sugestões sem spoilers importantes.</p>
-          </div>
-          <p className="intro-note">Pôsteres, ano e tipo aparecem em uma grade rápida de consultar.</p>
+          <p className="eyebrow">Curadoria inteligente</p>
+          <h1 id="catalog-title">O que você quer assistir?</h1>
+          <p>Busque por título ou receba sugestões com IA.</p>
         </section>
 
         <section className="tool-panel" aria-label="Ferramentas de busca e recomendação">
@@ -169,7 +160,7 @@ export default function Home() {
               aria-labelledby="search-tab"
             >
               <label className="field-group" htmlFor="title-search">
-                <span>Busque pelo nome de um filme ou série.</span>
+                <span>Digite um título para montar sua grade.</span>
                 <div className="inline-action">
                   <input
                     id="title-search"
@@ -195,7 +186,7 @@ export default function Home() {
               aria-labelledby="recommendation-tab"
             >
               <label className="field-group" htmlFor="ai-recommendation">
-                <span>Descreva o que você quer assistir e receba sugestões com IA.</span>
+                <span>Descreva clima, gênero ou duração desejada.</span>
                 <textarea
                   id="ai-recommendation"
                   name="recommendation"
