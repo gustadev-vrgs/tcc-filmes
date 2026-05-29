@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SmartSeek AI",
-  description: "Protótipo web para busca de filmes e recomendações com IA"
+  title: "AskFilmX",
+  description: "Encontre filmes e séries com busca por título e recomendações com IA, sem spoilers importantes."
 };
 
 export default function RootLayout({
