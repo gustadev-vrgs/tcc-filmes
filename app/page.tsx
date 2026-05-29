@@ -20,6 +20,8 @@ type ApiErrorResponse = {
   error: string;
 };
 
+type ActiveTool = "search" | "recommendation";
+
 function hasPoster(poster: string) {
   return poster && poster !== "N/A";
 }
@@ -35,7 +37,10 @@ function formatType(type: string) {
 }
 
 export default function Home() {
+  const [activeTool, setActiveTool] = useState<ActiveTool>("search");
   const [title, setTitle] = useState("");
+  const [recommendationPrompt, setRecommendationPrompt] = useState("");
+  const [recommendationMessage, setRecommendationMessage] = useState<string | null>(null);
   const [results, setResults] = useState<OmdbMovie[]>([]);
   const [totalResults, setTotalResults] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,9 +94,20 @@ export default function Home() {
     }
   }
 
+  function handleRecommendation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!recommendationPrompt.trim()) {
+      setRecommendationMessage("Descreva rapidamente o que você quer assistir.");
+      return;
+    }
+
+    setRecommendationMessage("A recomendação por IA será exibida nesta área quando o módulo estiver conectado.");
+  }
+
   return (
-    <main className="min-h-screen overflow-hidden bg-ink text-white">
-      <div className="page-shell">
+    <main className="app-catalog-shell">
+      <div className="catalog-page">
         <header className="site-header" aria-label="Cabeçalho principal">
           <a className="brand" href="/" aria-label="AskFilmX - página inicial">
             <span className="brand-mark">AFX</span>
@@ -99,104 +115,155 @@ export default function Home() {
           </a>
 
           <nav className="header-pills" aria-label="Recursos do AskFilmX">
-            <span>Busca OMDb</span>
-            <span>IA generativa</span>
+            <button type="button" onClick={() => setActiveTool("search")}>Busca</button>
+            <button type="button" onClick={() => setActiveTool("recommendation")}>IA generativa</button>
             <span>Sem spoilers</span>
           </nav>
         </header>
 
-        <section className="hero-grid">
-          <div className="hero-copy">
-            <p className="eyebrow">Cinema, séries e recomendações inteligentes</p>
-            <h1>Encontre filmes e séries com ajuda de IA</h1>
-            <p className="hero-subtitle">
-              Busque diretamente por um título ou descreva em linguagem natural o que você quer assistir. O AskFilmX combina
-              dados de filmes e séries com IA para sugerir opções relevantes, claras e sem spoilers importantes.
-            </p>
+        <section className="catalog-intro" aria-labelledby="catalog-title">
+          <div>
+            <p className="eyebrow">Catálogo inteligente</p>
+            <h1 id="catalog-title">O que você quer assistir?</h1>
+            <p>Busque por título ou descreva uma recomendação com IA.</p>
+          </div>
+          <p className="intro-note">Clique em um título para ver detalhes e conversar sobre a sinopse.</p>
+        </section>
 
-            <div className="trust-row" aria-label="Destaques da experiência">
-              <span>Rápido</span>
-              <span>Responsivo</span>
-              <span>Privado por padrão</span>
-            </div>
+        <section className="tool-panel" aria-label="Ferramentas de busca e recomendação">
+          <div className="tool-tabs" role="tablist" aria-label="Escolha como começar">
+            <button
+              type="button"
+              id="search-tab"
+              className={activeTool === "search" ? "tool-tab active" : "tool-tab"}
+              onClick={() => setActiveTool("search")}
+              role="tab"
+              aria-selected={activeTool === "search"}
+              aria-controls="search-panel"
+            >
+              Buscar por título
+            </button>
+            <button
+              type="button"
+              id="recommendation-tab"
+              className={activeTool === "recommendation" ? "tool-tab active" : "tool-tab"}
+              onClick={() => setActiveTool("recommendation")}
+              role="tab"
+              aria-selected={activeTool === "recommendation"}
+              aria-controls="recommendation-panel"
+            >
+              Pedir recomendação por IA
+            </button>
           </div>
 
-          <section className="search-card" aria-labelledby="form-title">
-            <div className="card-glow" aria-hidden="true" />
-            <div className="form-heading">
-              <p className="eyebrow">Comece agora</p>
-              <h2 id="form-title">O que você quer encontrar?</h2>
-            </div>
-
-            <form className="action-form" onSubmit={handleTitleSearch}>
+          <div className="tool-content">
+            <form
+              id="search-panel"
+              className={activeTool === "search" ? "tool-form active" : "tool-form"}
+              onSubmit={handleTitleSearch}
+              role="tabpanel"
+              aria-labelledby="search-tab"
+            >
               <label className="field-group" htmlFor="title-search">
-                <span>Buscar por título</span>
-                <input
-                  id="title-search"
-                  name="title"
-                  type="search"
-                  placeholder="Ex.: Interestelar, Breaking Bad, Matrix..."
-                  autoComplete="off"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
-              <button type="submit" className="primary-button" disabled={isLoading}>
-                {isLoading ? "Buscando..." : "Buscar título"}
-              </button>
-
-              <div className="search-feedback" aria-live="polite">
-                {isLoading && <p>Consultando a OMDb com segurança pelo servidor...</p>}
-                {!isLoading && message && <p>{message}</p>}
-                {!isLoading && results.length > 0 && (
-                  <p>
-                    Encontramos {totalResults} resultado{totalResults === "1" ? "" : "s"}. Exibindo os primeiros cards.
-                  </p>
-                )}
-              </div>
-
-              {results.length > 0 && (
-                <div className="results-grid" aria-label="Resultados da busca por título">
-                  {results.map((movie) => (
-                    <article className="movie-card" key={movie.imdbID}>
-                      <div className="poster-frame">
-                        {hasPoster(movie.Poster) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={movie.Poster} alt={`Capa de ${movie.Title}`} />
-                        ) : (
-                          <div className="poster-placeholder" aria-label={`Sem capa disponível para ${movie.Title}`}>
-                            <span>Sem capa</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="movie-info">
-                        <h3>{movie.Title}</h3>
-                        <p>{movie.Year}</p>
-                        <span>{formatType(movie.Type)}</span>
-                      </div>
-                    </article>
-                  ))}
+                <span>Busque pelo nome de um filme ou série.</span>
+                <div className="inline-action">
+                  <input
+                    id="title-search"
+                    name="title"
+                    type="search"
+                    placeholder="Ex.: Interestelar, Breaking Bad, Matrix..."
+                    autoComplete="off"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                  <button type="submit" className="primary-button" disabled={isLoading}>
+                    {isLoading ? "Buscando..." : "Buscar"}
+                  </button>
                 </div>
-              )}
+              </label>
+            </form>
 
-              <div className="divider" role="separator">
-                <span>ou</span>
-              </div>
-
+            <form
+              id="recommendation-panel"
+              className={activeTool === "recommendation" ? "tool-form active" : "tool-form"}
+              onSubmit={handleRecommendation}
+              role="tabpanel"
+              aria-labelledby="recommendation-tab"
+            >
               <label className="field-group" htmlFor="ai-recommendation">
-                <span>Pedir recomendação por IA</span>
+                <span>Descreva o que você quer assistir e receba sugestões com IA.</span>
                 <textarea
                   id="ai-recommendation"
                   name="recommendation"
-                  placeholder="Ex.: Quero uma série curta de suspense psicológico, com clima sombrio e sem terror explícito."
-                  rows={5}
+                  placeholder="Ex: quero uma série de suspense psicológico, com clima sombrio e sem terror explícito."
+                  rows={4}
+                  value={recommendationPrompt}
+                  onChange={(event) => setRecommendationPrompt(event.target.value)}
                 />
               </label>
-              <button type="button" className="secondary-button">
-                Pedir recomendação
+              <button type="submit" className="secondary-button">
+                Recomendar
               </button>
+              {recommendationMessage && <p className="recommendation-feedback">{recommendationMessage}</p>}
             </form>
-          </section>
+          </div>
+        </section>
+
+        <section className="results-section" aria-labelledby="results-title">
+          <div className="results-heading">
+            <div>
+              <p className="eyebrow">Catálogo</p>
+              <h2 id="results-title">Resultados encontrados</h2>
+            </div>
+            <p className="results-helper" aria-live="polite">
+              {isLoading && "Consultando a OMDb com segurança pelo servidor..."}
+              {!isLoading && message && message}
+              {!isLoading && results.length > 0 &&
+                `Encontramos ${totalResults} resultado${totalResults === "1" ? "" : "s"}.`}
+              {!isLoading && !message && results.length === 0 && "Os pôsteres aparecerão aqui após a busca."}
+            </p>
+          </div>
+
+          {results.length > 0 ? (
+            <div className="results-grid" aria-label="Resultados da busca por título">
+              {results.map((movie) => (
+                <a
+                  className="movie-card"
+                  href={`https://www.imdb.com/title/${movie.imdbID}/`}
+                  key={movie.imdbID}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Abrir detalhes de ${movie.Title}`}
+                >
+                  <div className="poster-frame">
+                    {hasPoster(movie.Poster) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={movie.Poster} alt={`Pôster de ${movie.Title}`} />
+                    ) : (
+                      <div className="poster-placeholder" aria-label={`Sem pôster disponível para ${movie.Title}`}>
+                        <span>Sem pôster</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="movie-info">
+                    <h3>{movie.Title}</h3>
+                    <div className="movie-meta">
+                      <span>{movie.Year}</span>
+                      <strong>{formatType(movie.Type)}</strong>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-catalog" aria-label="Catálogo aguardando busca">
+              <div className="empty-poster" />
+              <div>
+                <h3>Seu catálogo começa com uma busca.</h3>
+                <p>Digite um título acima para montar uma grade de filmes e séries com pôsteres em destaque.</p>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </main>
