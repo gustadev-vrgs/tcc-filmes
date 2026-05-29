@@ -36,6 +36,10 @@ function formatType(type: string) {
   return labels[type] ?? type;
 }
 
+function isNotFoundMessage(message: string | null) {
+  return message?.startsWith("Não encontramos nada") ?? false;
+}
+
 export default function Home() {
   const [activeTool, setActiveTool] = useState<ActiveTool>("search");
   const [title, setTitle] = useState("");
@@ -125,9 +129,9 @@ export default function Home() {
           <div>
             <p className="eyebrow">Catálogo inteligente</p>
             <h1 id="catalog-title">O que você quer assistir?</h1>
-            <p>Busque por título ou descreva uma recomendação com IA.</p>
+            <p>Encontre filmes e séries ou peça sugestões sem spoilers importantes.</p>
           </div>
-          <p className="intro-note">Clique em um título para ver detalhes e conversar sobre a sinopse.</p>
+          <p className="intro-note">Pôsteres, ano e tipo aparecem em uma grade rápida de consultar.</p>
         </section>
 
         <section className="tool-panel" aria-label="Ferramentas de busca e recomendação">
@@ -171,7 +175,7 @@ export default function Home() {
                     id="title-search"
                     name="title"
                     type="search"
-                    placeholder="Ex.: Interestelar, Breaking Bad, Matrix..."
+                    placeholder="Digite um título, ex.: Matrix, Dark, Interestelar"
                     autoComplete="off"
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
@@ -195,7 +199,7 @@ export default function Home() {
                 <textarea
                   id="ai-recommendation"
                   name="recommendation"
-                  placeholder="Ex: quero uma série de suspense psicológico, com clima sombrio e sem terror explícito."
+                  placeholder="Ex.: série curta de suspense psicológico, clima sombrio e sem terror explícito"
                   rows={4}
                   value={recommendationPrompt}
                   onChange={(event) => setRecommendationPrompt(event.target.value)}
@@ -216,16 +220,29 @@ export default function Home() {
               <h2 id="results-title">Resultados encontrados</h2>
             </div>
             <p className="results-helper" aria-live="polite">
-              {isLoading && "Consultando a OMDb com segurança pelo servidor..."}
-              {!isLoading && message && message}
+              {isLoading && "Buscando títulos e preparando a grade..."}
+              {!isLoading && message && !isNotFoundMessage(message) && message}
+              {!isLoading && isNotFoundMessage(message) && "Nenhum resultado encontrado para essa busca."}
               {!isLoading && results.length > 0 &&
                 `Encontramos ${totalResults} resultado${totalResults === "1" ? "" : "s"}.`}
               {!isLoading && !message && results.length === 0 && "Os pôsteres aparecerão aqui após a busca."}
             </p>
           </div>
 
-          {results.length > 0 ? (
-            <div className="results-grid" aria-label="Resultados da busca por título">
+          {isLoading ? (
+            <div className="results-grid loading-grid" aria-label="Carregando resultados">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div className="movie-card skeleton-card" key={index}>
+                  <div className="poster-frame skeleton-poster" />
+                  <div className="movie-info">
+                    <span className="skeleton-line wide" />
+                    <span className="skeleton-line short" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : results.length > 0 ? (
+            <div className={results.length < 5 ? "results-grid short-grid" : "results-grid"} aria-label="Resultados da busca por título">
               {results.map((movie) => (
                 <a
                   className="movie-card"
@@ -256,11 +273,15 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            <div className="empty-catalog" aria-label="Catálogo aguardando busca">
+            <div className={isNotFoundMessage(message) ? "empty-catalog empty-error" : "empty-catalog"} aria-label="Catálogo aguardando busca">
               <div className="empty-poster" />
               <div>
-                <h3>Seu catálogo começa com uma busca.</h3>
-                <p>Digite um título acima para montar uma grade de filmes e séries com pôsteres em destaque.</p>
+                <h3>{isNotFoundMessage(message) ? "Nenhum título encontrado." : "Seu catálogo começa com uma busca."}</h3>
+                <p>
+                  {isNotFoundMessage(message)
+                    ? "Tente pesquisar pelo título original, remover acentos ou usar apenas uma palavra principal."
+                    : "Digite um título acima para montar uma grade de filmes e séries com pôsteres em destaque."}
+                </p>
               </div>
             </div>
           )}
