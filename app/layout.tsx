@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AskFilmX",
-  description: "Encontre filmes e séries com busca por título e recomendações com IA, sem spoilers importantes."
+  description: "Curadoria audiovisual com busca inteligente e recomendações por IA generativa."
 };
 
 export default function RootLayout({
