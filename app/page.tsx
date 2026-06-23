@@ -21,6 +21,18 @@ type CatalogItem = {
   poster: string;
 };
 
+type MovieDetails = SearchItem & {
+  Rated?: string;
+  Released?: string;
+  Runtime?: string;
+  Genre?: string;
+  Director?: string;
+  Writer?: string;
+  Actors?: string;
+  Plot?: string;
+  imdbRating?: string;
+};
+
 const placeholderExamples = ["Busque por um título...", "Ex.: filme de mistério", "Ex.: série de ficção científica"];
 const suggestionChips = [
   "Anime psicológico e perturbador",
@@ -136,7 +148,7 @@ function FilterBar({ activeFilter, onChange }: { activeFilter: FilterKey; onChan
   );
 }
 
-function MovieCard({ item }: { item: CatalogItem }) {
+function MovieCard({ item, onSelect }: { item: CatalogItem; onSelect: (item: CatalogItem) => void }) {
   const hasPoster = item.poster && item.poster !== "N/A";
 
   return (
@@ -148,14 +160,17 @@ function MovieCard({ item }: { item: CatalogItem }) {
       <div className="movie-caption">
         <div>
           <h3>{item.title}</h3>
-          <p>{item.year}</p>
+          <p>{item.year} • {item.type}</p>
         </div>
+        <button type="button" className="details-link" onClick={() => onSelect(item)}>
+          Ver detalhes
+        </button>
       </div>
     </article>
   );
 }
 
-function ResultsGrid({ isLoading, items }: { isLoading: boolean; items: CatalogItem[] }) {
+function ResultsGrid({ isLoading, items, onSelect }: { isLoading: boolean; items: CatalogItem[]; onSelect: (item: CatalogItem) => void }) {
   if (isLoading) {
     return (
       <div className="results-grid" aria-label="Carregando resultados">
@@ -172,8 +187,64 @@ function ResultsGrid({ isLoading, items }: { isLoading: boolean; items: CatalogI
   return (
     <div className="results-grid" aria-label="Resultados de busca audiovisual">
       {items.map((item) => (
-        <MovieCard item={item} key={item.id} />
+        <MovieCard item={item} key={item.id} onSelect={onSelect} />
       ))}
+    </div>
+  );
+}
+
+function DetailsModal({
+  details,
+  isLoading,
+  error,
+  onClose
+}: {
+  details: MovieDetails | null;
+  isLoading: boolean;
+  error: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="details-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="details-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="details-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button type="button" className="close-details" onClick={onClose} aria-label="Fechar detalhes">×</button>
+        {isLoading ? (
+          <div className="details-loading">Carregando detalhes...</div>
+        ) : error ? (
+          <div className="details-error">{error}</div>
+        ) : details ? (
+          <div className="details-content">
+            <div className="details-poster">
+              {details.Poster && details.Poster !== "N/A" ? (
+                <img src={details.Poster} alt={`Pôster de ${details.Title}`} />
+              ) : (
+                <div className="poster-fallback">AskFilm</div>
+              )}
+            </div>
+            <div className="details-copy">
+              <span className="details-kicker">{details.Type} • {details.Year}</span>
+              <h2 id="details-title">{details.Title}</h2>
+              <div className="details-meta">
+                <span>{details.Runtime && details.Runtime !== "N/A" ? details.Runtime : "Duração indisponível"}</span>
+                <span>{details.imdbRating && details.imdbRating !== "N/A" ? `IMDb ${details.imdbRating}` : "Nota indisponível"}</span>
+              </div>
+              <p className="details-plot">{details.Plot && details.Plot !== "N/A" ? details.Plot : "Sinopse indisponível."}</p>
+              <dl className="details-list">
+                <div><dt>Gênero</dt><dd>{details.Genre && details.Genre !== "N/A" ? details.Genre : "Indisponível"}</dd></div>
+                <div><dt>Direção / criação</dt><dd>{details.Director && details.Director !== "N/A" ? details.Director : details.Writer && details.Writer !== "N/A" ? details.Writer : "Indisponível"}</dd></div>
+                <div><dt>Elenco</dt><dd>{details.Actors && details.Actors !== "N/A" ? details.Actors : "Indisponível"}</dd></div>
+                <div><dt>Tipo</dt><dd>{details.Type}</dd></div>
+              </dl>
+            </div>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }
@@ -188,6 +259,9 @@ export default function Home() {
   const [statusMessage, setStatusMessage] = useState("Digite uma busca ou peça uma recomendação para começar.");
   const [visibleItems, setVisibleItems] = useState<CatalogItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedDetails, setSelectedDetails] = useState<MovieDetails | null>(null);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -235,6 +309,33 @@ export default function Home() {
     }
   }
 
+  async function handleSelectMovie(item: CatalogItem) {
+    setIsDetailsLoading(true);
+    setDetailsError("");
+    setSelectedDetails(null);
+
+    try {
+      const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(item.id)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Não foi possível abrir os detalhes agora.");
+      }
+
+      setSelectedDetails(data as MovieDetails);
+    } catch (error) {
+      setDetailsError(error instanceof Error ? error.message : "Não foi possível abrir os detalhes agora.");
+    } finally {
+      setIsDetailsLoading(false);
+    }
+  }
+
+  function closeDetails() {
+    setSelectedDetails(null);
+    setDetailsError("");
+    setIsDetailsLoading(false);
+  }
+
   function handleRecommendation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActiveMode("recommend");
@@ -242,7 +343,7 @@ export default function Home() {
     setVisibleItems([]);
     setStatusMessage(
       recommendationPrompt.trim()
-        ? "Pedido recebido. A recomendação com IA permanece sem cards fictícios nesta tela."
+        ? "Pedido recebido. A integração com IA foi preservada; nenhum card fictício será exibido sem uma resposta conectada."
         : "Descreva o que você quer assistir para pedir uma recomendação."
     );
   }
@@ -299,7 +400,7 @@ export default function Home() {
 
           <div className="panel-section">
             <div className="mode-heading">
-              <span>{activeMode === "search" ? "Catálogo" : "IA"}</span>
+              <span>{activeMode === "search" ? "CATÁLOGO" : "RECOMENDAÇÃO"}</span>
               <h2>{activeMode === "search" ? "Busque por título" : "Conte o que quer assistir"}</h2>
             </div>
             {activeMode === "search" ? (
@@ -332,7 +433,7 @@ export default function Home() {
         </div>
         {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} onChange={setActiveFilter} />}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
-          <ResultsGrid isLoading={isLoading} items={filteredItems} />
+          <ResultsGrid isLoading={isLoading} items={filteredItems} onSelect={handleSelectMovie} />
         ) : (
           <div className="empty-state">
             <p>Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.</p>
@@ -361,6 +462,15 @@ export default function Home() {
           </article>
         </div>
       </section>
+
+      {(isDetailsLoading || selectedDetails || detailsError) && (
+        <DetailsModal
+          details={selectedDetails}
+          isLoading={isDetailsLoading}
+          error={detailsError}
+          onClose={closeDetails}
+        />
+      )}
 
       <footer className="site-footer">AskFilm © 2026 — Curadoria audiovisual com IA</footer>
     </main>
