@@ -1,124 +1,51 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série" | "Anime" | "Doc";
+
+type SearchItem = {
+  Title: string;
+  Year: string;
+  imdbID: string;
+  Type: string;
+  Poster: string;
+};
 
 type CatalogItem = {
   id: string;
   title: string;
   year: string;
   type: Exclude<FilterKey, "Todos">;
-  genre: string;
-  platform: string;
-  rating: number;
-  synopsis: string;
-  palette: string;
+  poster: string;
 };
 
-const placeholderExamples = ["Blade Runner 2049...", "Neon Genesis Evangelion...", "Succession..."];
+const placeholderExamples = ["Busque por um título...", "Ex.: filme de mistério", "Ex.: série de ficção científica"];
 const suggestionChips = [
   "Anime psicológico e perturbador",
   "Thriller nórdico estilo True Detective",
   "Filme para choro em família",
   "Comédia britânica anos 90"
 ];
-const filterOptions: FilterKey[] = ["Todos", "Filme", "Série", "Anime", "Doc"];
+const filterOptions: FilterKey[] = ["Todos", "Filme", "Série"];
 
-const catalogItems: CatalogItem[] = [
-  {
-    id: "arrival",
-    title: "A Chegada",
-    year: "2016",
-    type: "Filme",
-    genre: "Sci-fi contemplativo",
-    platform: "Prime Video",
-    rating: 4.7,
-    synopsis: "Uma linguista decifra uma visita extraterrestre em uma narrativa sobre memória, tempo e afeto.",
-    palette: "poster-amber"
-  },
-  {
-    id: "severance",
-    title: "Ruptura",
-    year: "2022",
-    type: "Série",
-    genre: "Mistério corporativo",
-    platform: "Apple TV+",
-    rating: 4.8,
-    synopsis: "Funcionários separam memórias pessoais e profissionais em um thriller elegante e inquietante.",
-    palette: "poster-blue"
-  },
-  {
-    id: "evangelion",
-    title: "Neon Genesis Evangelion",
-    year: "1995",
-    type: "Anime",
-    genre: "Drama psicológico",
-    platform: "Netflix",
-    rating: 4.9,
-    synopsis: "Mechas, trauma e filosofia se encontram em um clássico de animação denso e perturbador.",
-    palette: "poster-violet"
-  },
-  {
-    id: "senna",
-    title: "Senna",
-    year: "2010",
-    type: "Doc",
-    genre: "Documentário esportivo",
-    platform: "Globoplay",
-    rating: 4.6,
-    synopsis: "Arquivo, velocidade e mito constroem um retrato emocional de Ayrton Senna.",
-    palette: "poster-green"
-  },
-  {
-    id: "parasite",
-    title: "Parasita",
-    year: "2019",
-    type: "Filme",
-    genre: "Suspense social",
-    platform: "Max",
-    rating: 4.9,
-    synopsis: "Uma família se infiltra na casa de outra em uma sátira afiada sobre classe e desejo.",
-    palette: "poster-crimson"
-  },
-  {
-    id: "dark",
-    title: "Dark",
-    year: "2017",
-    type: "Série",
-    genre: "Sci-fi temporal",
-    platform: "Netflix",
-    rating: 4.7,
-    synopsis: "Desaparecimentos em uma cidade alemã revelam ciclos familiares, paradoxos e segredos.",
-    palette: "poster-slate"
-  },
-  {
-    id: "perfect-blue",
-    title: "Perfect Blue",
-    year: "1997",
-    type: "Anime",
-    genre: "Thriller psicológico",
-    platform: "MUBI",
-    rating: 4.8,
-    synopsis: "Uma idol em transição para atriz perde a fronteira entre performance, perseguição e identidade.",
-    palette: "poster-pink"
-  },
-  {
-    id: "jane",
-    title: "Jane",
-    year: "2017",
-    type: "Doc",
-    genre: "Natureza e biografia",
-    platform: "Disney+",
-    rating: 4.5,
-    synopsis: "Imagens raras compõem um retrato íntimo da pesquisadora Jane Goodall e dos chimpanzés.",
-    palette: "poster-earth"
+function mapItemType(type: string): CatalogItem["type"] {
+  if (type === "series") {
+    return "Série";
   }
-];
 
-function getStars(rating: number) {
-  return "★".repeat(Math.round(rating));
+  return "Filme";
+}
+
+function mapSearchItem(item: SearchItem): CatalogItem {
+  return {
+    id: item.imdbID,
+    title: item.Title,
+    year: item.Year,
+    type: mapItemType(item.Type),
+    poster: item.Poster
+  };
 }
 
 function SearchBar({
@@ -202,40 +129,27 @@ function FilterBar({ activeFilter, onChange }: { activeFilter: FilterKey; onChan
           className={activeFilter === filter ? "filter-pill active" : "filter-pill"}
           onClick={() => onChange(filter)}
         >
-          Tipo: {filter}
+          {filter}
         </button>
       ))}
-      <button type="button" className="filter-pill">Gênero</button>
-      <button type="button" className="filter-pill">Plataforma</button>
-      <button type="button" className="filter-pill">Avaliação 4+</button>
     </div>
   );
 }
 
 function MovieCard({ item }: { item: CatalogItem }) {
+  const hasPoster = item.poster && item.poster !== "N/A";
+
   return (
     <article className="movie-card" aria-label={`${item.title}, ${item.type}`}>
-      <div className={`poster-art ${item.palette}`}>
-        <button type="button" className="bookmark-button" aria-label={`Salvar ${item.title} na lista`}>⌑</button>
+      <div className="poster-art real-poster">
+        {hasPoster ? <img src={item.poster} alt={`Pôster de ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
         <span className="type-badge">{item.type.toUpperCase()}</span>
-        <div className="poster-title" aria-hidden="true">
-          <span>{item.title}</span>
-        </div>
-        <div className="movie-overlay">
-          <p className="rating" aria-label={`Avaliação ${item.rating} de 5`}>
-            <span aria-hidden="true">{getStars(item.rating)}</span> {item.rating.toFixed(1)}
-          </p>
-          <h3>{item.title}</h3>
-          <p>{item.synopsis}</p>
-          <button type="button">Ver detalhes</button>
-        </div>
       </div>
       <div className="movie-caption">
         <div>
           <h3>{item.title}</h3>
-          <p>{item.year} · {item.genre}</p>
+          <p>{item.year}</p>
         </div>
-        <strong>{item.rating.toFixed(1)}</strong>
       </div>
     </article>
   );
@@ -244,8 +158,8 @@ function MovieCard({ item }: { item: CatalogItem }) {
 function ResultsGrid({ isLoading, items }: { isLoading: boolean; items: CatalogItem[] }) {
   if (isLoading) {
     return (
-      <div className="results-grid" aria-label="Carregando recomendações">
-        {Array.from({ length: 8 }).map((_, index) => (
+      <div className="results-grid" aria-label="Carregando resultados">
+        {Array.from({ length: 4 }).map((_, index) => (
           <div className="skeleton-card" key={index}>
             <span />
             <strong />
@@ -256,7 +170,7 @@ function ResultsGrid({ isLoading, items }: { isLoading: boolean; items: CatalogI
   }
 
   return (
-    <div className="results-grid" aria-label="Resultados de curadoria audiovisual">
+    <div className="results-grid" aria-label="Resultados de busca audiovisual">
       {items.map((item) => (
         <MovieCard item={item} key={item.id} />
       ))}
@@ -271,8 +185,9 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Todos");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("Seleção editorial inicial com filmes, séries, animes e documentários.");
-  const [visibleItems, setVisibleItems] = useState<CatalogItem[]>(catalogItems);
+  const [statusMessage, setStatusMessage] = useState("Digite uma busca ou peça uma recomendação para começar.");
+  const [visibleItems, setVisibleItems] = useState<CatalogItem[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -282,73 +197,70 @@ export default function Home() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const filteredItems = useMemo(() => {
-    if (activeFilter === "Todos") {
-      return visibleItems;
-    }
+  const filteredItems = activeFilter === "Todos" ? visibleItems : visibleItems.filter((item) => item.type === activeFilter);
 
-    return visibleItems.filter((item) => item.type === activeFilter);
-  }, [activeFilter, visibleItems]);
-
-  function finishWithMockResults(nextItems: CatalogItem[], message: string) {
-    window.setTimeout(() => {
-      setVisibleItems(nextItems);
-      setStatusMessage(message);
-      setIsLoading(false);
-    }, 700);
-  }
-
-  function handleTitleSearch(event: FormEvent<HTMLFormElement>) {
+  async function handleTitleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActiveMode("search");
     setIsLoading(true);
-    setStatusMessage("Buscando no catálogo editorial...");
+    setHasSearched(true);
+    setStatusMessage("Buscando títulos...");
+    setActiveFilter("Todos");
 
-    const query = searchTitle.trim().toLowerCase();
-    const nextItems = query
-      ? catalogItems.filter((item) => `${item.title} ${item.genre} ${item.type}`.toLowerCase().includes(query))
-      : catalogItems;
+    const query = searchTitle.trim();
 
-    finishWithMockResults(
-      nextItems.length > 0 ? nextItems : catalogItems.slice(0, 4),
-      nextItems.length > 0
-        ? `Encontramos ${nextItems.length} curadoria${nextItems.length === 1 ? "" : "s"} para sua busca.`
-        : "Nada exato no mock visual; exibimos títulos próximos para explorar."
-    );
+    if (!query) {
+      setVisibleItems([]);
+      setStatusMessage("Informe um título, gênero ou referência para buscar.");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Não foi possível buscar agora.");
+      }
+
+      const items = (data.Search as SearchItem[]).map(mapSearchItem);
+      setVisibleItems(items);
+      setStatusMessage(`Encontramos ${items.length} resultado${items.length === 1 ? "" : "s"} para “${query}”.`);
+    } catch (error) {
+      setVisibleItems([]);
+      setStatusMessage(error instanceof Error ? error.message : "Não foi possível buscar agora.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function handleRecommendation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActiveMode("recommend");
-    setIsLoading(true);
-    setStatusMessage("IA respondendo");
-
-    const prompt = recommendationPrompt.toLowerCase();
-    const nextItems = catalogItems.filter((item) => {
-      const searchable = `${item.title} ${item.genre} ${item.synopsis} ${item.type}`.toLowerCase();
-      return prompt.split(" ").some((word) => word.length > 4 && searchable.includes(word));
-    });
-
-    finishWithMockResults(
-      nextItems.length > 0 ? nextItems : [catalogItems[2], catalogItems[6], catalogItems[1], catalogItems[4]],
-      "Recomendação simulada pronta: uma seleção com tensão, autoria e atmosfera."
+    setHasSearched(true);
+    setVisibleItems([]);
+    setStatusMessage(
+      recommendationPrompt.trim()
+        ? "Pedido recebido. A recomendação com IA permanece sem cards fictícios nesta tela."
+        : "Descreva o que você quer assistir para pedir uma recomendação."
     );
   }
 
   return (
     <main className="app-shell">
       <header className="site-header" aria-label="Navegação principal">
-        <a className="brand" href="#top" aria-label="AskFilmX - página inicial">
+        <a className="brand" href="#top" aria-label="AskFilm - página inicial">
           <span className="film-reel" aria-hidden="true">
             <i />
             <i />
             <i />
             <i />
           </span>
-          <span className="brand-wordmark">AFX</span>
-          <span className="brand-name">AskFilmX</span>
+          <span className="brand-wordmark">AF</span>
+          <span className="brand-name">AskFilm</span>
         </a>
-        <nav className="main-nav" aria-label="Seções do AskFilmX">
+        <nav className="main-nav" aria-label="Seções do AskFilm">
           <button type="button" onClick={() => setActiveMode("search")}>Buscar</button>
           <button type="button" onClick={() => setActiveMode("recommend")}>Recomendar com IA</button>
           <a href="#results">Minha Lista</a>
@@ -358,9 +270,9 @@ export default function Home() {
 
       <section className="hero-section" id="top" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <p className="eyebrow">Cinematic editorial intelligence</p>
-          <h1 id="hero-title">O que você quer assistir hoje?</h1>
-          <p>Curadoria inteligente para cinéfilos exigentes.</p>
+          <p className="eyebrow">AskFilm</p>
+          <h1 id="hero-title">Encontre o filme certo para o seu momento.</h1>
+          <p>Busque títulos ou descreva seu humor para receber uma curadoria mais inteligente, sem ruído visual.</p>
         </div>
 
         <div className="interaction-panel" aria-label="Modos de interação">
@@ -387,8 +299,8 @@ export default function Home() {
 
           <div className="panel-section">
             <div className="mode-heading">
-              <span>{activeMode === "search" ? "Modo 1" : "Modo 2"}</span>
-              <h2>{activeMode === "search" ? "Busca por título" : "Recomendação por IA"}</h2>
+              <span>{activeMode === "search" ? "Catálogo" : "IA"}</span>
+              <h2>{activeMode === "search" ? "Busque por título" : "Conte o que quer assistir"}</h2>
             </div>
             {activeMode === "search" ? (
               <SearchBar
@@ -413,16 +325,19 @@ export default function Home() {
       <section className="results-section" id="results" aria-labelledby="results-title">
         <div className="results-heading">
           <div>
-            <p className="eyebrow">Seleção em cartaz</p>
-            <h2 id="results-title">Resultados curados</h2>
+            <p className="eyebrow">Resultados</p>
+            <h2 id="results-title">Sua curadoria</h2>
           </div>
-          <div className={isLoading && activeMode === "recommend" ? "status-badge typing" : "status-badge"} aria-live="polite">
-            {statusMessage}
-            {isLoading && activeMode === "recommend" && <span aria-hidden="true"><i /> <i /> <i /></span>}
-          </div>
+          <div className="status-badge" aria-live="polite">{statusMessage}</div>
         </div>
-        <FilterBar activeFilter={activeFilter} onChange={setActiveFilter} />
-        <ResultsGrid isLoading={isLoading} items={filteredItems} />
+        {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} onChange={setActiveFilter} />}
+        {hasSearched && (visibleItems.length > 0 || isLoading) ? (
+          <ResultsGrid isLoading={isLoading} items={filteredItems} />
+        ) : (
+          <div className="empty-state">
+            <p>Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.</p>
+          </div>
+        )}
       </section>
 
       <section className="how-it-works" id="how-it-works" aria-labelledby="how-title">
@@ -436,18 +351,18 @@ export default function Home() {
           </article>
           <article>
             <span>02</span>
-            <h3>IA analisa seu gosto</h3>
-            <p>O mock simula uma leitura editorial do seu pedido.</p>
+            <h3>Busque ou peça IA</h3>
+            <p>A tela prioriza sua intenção e evita cards fixos de demonstração.</p>
           </article>
           <article>
             <span>03</span>
-            <h3>Receba recomendações</h3>
-            <p>Explore pôsteres, rating e contexto em uma grade de catálogo.</p>
+            <h3>Explore resultados reais</h3>
+            <p>Os cards aparecem apenas após uma busca ou resposta conectada ao fluxo atual.</p>
           </article>
         </div>
       </section>
 
-      <footer className="site-footer">AskFilmX © 2025 — Curadoria audiovisual com IA</footer>
+      <footer className="site-footer">AskFilm © 2026 — Curadoria audiovisual com IA</footer>
     </main>
   );
 }
