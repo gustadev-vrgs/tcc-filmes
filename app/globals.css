@@ -85,12 +85,6 @@ p {
 }
 
 .site-header {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  z-index: 100;
-  width: min(1180px, calc(100% - 32px));
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -768,8 +762,6 @@ p {
   }
 
   .site-header {
-    top: 10px;
-    width: min(100% - 22px, 640px);
     align-items: flex-start;
     border-radius: 24px;
     flex-direction: column;
@@ -910,10 +902,6 @@ p {
 }
 
 @media (max-width: 460px) {
-  .app-shell {
-    padding-top: 136px;
-  }
-
   .site-header {
     padding: 8px;
   }
