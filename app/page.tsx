@@ -82,6 +82,81 @@ const suggestionChips: Record<Language, string[]> = {
 };
 const filterOptions: FilterKey[] = ["Todos", "Filme", "Série"];
 
+const detailsCopy = {
+  "pt-BR": {
+    close: "Fechar detalhes",
+    loading: "Carregando detalhes...",
+    posterAlt: "Pôster de",
+    runtimeUnavailable: "Duração indisponível",
+    ratingUnavailable: "Nota indisponível",
+    synopsis: "Sinopse",
+    synopsisUnavailable: "Sinopse indisponível.",
+    genre: "GÊNERO",
+    directorCreator: "DIREÇÃO / CRIAÇÃO",
+    cast: "ELENCO",
+    type: "TIPO",
+    unavailable: "Não informado",
+    movie: "Filme",
+    series: "Série",
+    movieBadge: "FILME",
+    seriesBadge: "SÉRIE"
+  },
+  en: {
+    close: "Close details",
+    loading: "Loading details...",
+    posterAlt: "Poster for",
+    runtimeUnavailable: "Runtime unavailable",
+    ratingUnavailable: "Rating unavailable",
+    synopsis: "Synopsis",
+    synopsisUnavailable: "Synopsis unavailable.",
+    genre: "GENRE",
+    directorCreator: "DIRECTOR / CREATOR",
+    cast: "CAST",
+    type: "TYPE",
+    unavailable: "N/A",
+    movie: "Movie",
+    series: "Series",
+    movieBadge: "MOVIE",
+    seriesBadge: "SERIES"
+  }
+} as const;
+
+const genreTranslations: Record<string, string> = {
+  Action: "Ação", Adventure: "Aventura", Animation: "Animação", Biography: "Biografia", Comedy: "Comédia",
+  Crime: "Crime", Documentary: "Documentário", Drama: "Drama", Family: "Família", Fantasy: "Fantasia",
+  History: "História", Horror: "Terror", Music: "Música", Musical: "Musical", Mystery: "Mistério",
+  Romance: "Romance", "Sci-Fi": "Ficção científica", Sport: "Esporte", Thriller: "Suspense", War: "Guerra", Western: "Faroeste"
+};
+
+function hasValue(value?: string) {
+  return Boolean(value && value !== "N/A");
+}
+
+function formatDetailsType(type: string | undefined, language: Language) {
+  const copy = detailsCopy[language];
+  return type === "series" ? copy.series : copy.movie;
+}
+
+function formatDetailsBadge(type: string | undefined, language: Language) {
+  const copy = detailsCopy[language];
+  return type === "series" ? copy.seriesBadge : copy.movieBadge;
+}
+
+function formatGenre(genre: string | undefined, language: Language) {
+  if (!hasValue(genre)) {
+    return detailsCopy[language].unavailable;
+  }
+
+  if (language === "en") {
+    return genre as string;
+  }
+
+  return (genre as string).split(",").map((item) => {
+    const trimmed = item.trim();
+    return genreTranslations[trimmed] ?? trimmed;
+  }).join(", ");
+}
+
 function mapItemType(type: string): CatalogItem["type"] {
   if (type === "series") {
     return "Série";
@@ -328,15 +403,20 @@ function DetailsModal({
   details,
   isLoading,
   error,
-  labels,
+  language,
+  synopsis,
   onClose
 }: {
   details: MovieDetails | null;
   isLoading: boolean;
   error: string;
-  labels: (typeof translations)[Language];
+  language: Language;
+  synopsis: string;
   onClose: () => void;
 }) {
+  const copy = detailsCopy[language];
+  const directorOrCreator = hasValue(details?.Director) ? details?.Director : hasValue(details?.Writer) ? details?.Writer : copy.unavailable;
+
   return (
     <div className="details-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -346,33 +426,33 @@ function DetailsModal({
         aria-labelledby="details-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <button type="button" className="close-details" onClick={onClose} aria-label={labels.closeDetails}>×</button>
+        <button type="button" className="close-details" onClick={onClose} aria-label={copy.close}>×</button>
         {isLoading ? (
-          <div className="details-loading">{labels.loadingDetails}</div>
+          <div className="details-loading">{copy.loading}</div>
         ) : error ? (
           <div className="details-error">{error}</div>
         ) : details ? (
           <div className="details-content">
             <div className="details-poster">
               {details.Poster && details.Poster !== "N/A" ? (
-                <img src={details.Poster} alt={`${labels.posterOf} ${details.Title}`} />
+                <img src={details.Poster} alt={`${copy.posterAlt} ${details.Title}`} />
               ) : (
                 <div className="poster-fallback">AskFilm</div>
               )}
             </div>
             <div className="details-copy">
-              <span className="details-kicker">{details.Type} • {details.Year}</span>
+              <span className="details-kicker">{formatDetailsBadge(details.Type, language)} • {details.Year}</span>
               <h2 id="details-title">{details.Title}</h2>
               <div className="details-meta">
-                <span>{details.Runtime && details.Runtime !== "N/A" ? details.Runtime : labels.runtimeUnavailable}</span>
-                <span>{details.imdbRating && details.imdbRating !== "N/A" ? `IMDb ${details.imdbRating}` : labels.ratingUnavailable}</span>
+                <span>{hasValue(details.Runtime) ? details.Runtime : copy.runtimeUnavailable}</span>
+                <span>{hasValue(details.imdbRating) ? `IMDb ${details.imdbRating}` : copy.ratingUnavailable}</span>
               </div>
-              <p className="details-plot">{details.Plot && details.Plot !== "N/A" ? details.Plot : labels.plotUnavailable}</p>
+              <div className="details-synopsis"><span>{copy.synopsis}</span><p className="details-plot">{synopsis || copy.synopsisUnavailable}</p></div>
               <dl className="details-list">
-                <div><dt>{labels.genre}</dt><dd>{details.Genre && details.Genre !== "N/A" ? details.Genre : labels.unavailable}</dd></div>
-                <div><dt>{labels.direction}</dt><dd>{details.Director && details.Director !== "N/A" ? details.Director : details.Writer && details.Writer !== "N/A" ? details.Writer : labels.unavailable}</dd></div>
-                <div><dt>{labels.cast}</dt><dd>{details.Actors && details.Actors !== "N/A" ? details.Actors : labels.unavailable}</dd></div>
-                <div><dt>{labels.type}</dt><dd>{details.Type}</dd></div>
+                <div><dt>{copy.genre}</dt><dd>{formatGenre(details.Genre, language)}</dd></div>
+                <div><dt>{copy.directorCreator}</dt><dd>{directorOrCreator}</dd></div>
+                <div><dt>{copy.cast}</dt><dd>{hasValue(details.Actors) ? details.Actors : copy.unavailable}</dd></div>
+                <div><dt>{copy.type}</dt><dd>{formatDetailsType(details.Type, language)}</dd></div>
               </dl>
             </div>
           </div>
@@ -394,6 +474,9 @@ export default function Home() {
   const [visibleItems, setVisibleItems] = useState<CatalogItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<MovieDetails | null>(null);
+  const [language, setLanguage] = useState<Language>("pt-BR");
+  const [translatedSynopsis, setTranslatedSynopsis] = useState("");
+  const [isSynopsisTranslating, setIsSynopsisTranslating] = useState(false);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -418,12 +501,67 @@ export default function Home() {
     }
   }, []);
 
-  function toggleLanguage() {
-    const nextLanguage: Language = language === "pt-BR" ? "en" : "pt-BR";
-    setLanguage(nextLanguage);
-    window.localStorage.setItem("askfilm-language", nextLanguage);
-    setStatusMessage(translations[nextLanguage].initialStatus);
-  }
+  useEffect(() => {
+    let isCurrent = true;
+    const originalPlot = hasValue(selectedDetails?.Plot) ? selectedDetails?.Plot ?? "" : "";
+
+    if (!selectedDetails || !originalPlot || language === "en") {
+      setTranslatedSynopsis("");
+      setIsSynopsisTranslating(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const cacheKey = `askfilm_translation_${selectedDetails.imdbID}_${language}`;
+    const cachedTranslation = window.localStorage.getItem(cacheKey);
+
+    if (cachedTranslation) {
+      setTranslatedSynopsis(cachedTranslation);
+      setIsSynopsisTranslating(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsSynopsisTranslating(true);
+
+    fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: originalPlot, targetLanguage: language })
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Translation failed");
+        }
+
+        return response.json() as Promise<{ translatedText?: string }>;
+      })
+      .then((data) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        const nextTranslation = data.translatedText?.trim() || originalPlot;
+        setTranslatedSynopsis(nextTranslation);
+        window.localStorage.setItem(cacheKey, nextTranslation);
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setTranslatedSynopsis(originalPlot);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsSynopsisTranslating(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [language, selectedDetails]);
 
   const filteredItems = activeFilter === "Todos" ? visibleItems : visibleItems.filter((item) => item.type === activeFilter);
 
@@ -512,6 +650,7 @@ export default function Home() {
 
   function closeDetails() {
     setSelectedDetails(null);
+    setTranslatedSynopsis("");
     setDetailsError("");
     setIsDetailsLoading(false);
   }
@@ -554,17 +693,11 @@ export default function Home() {
           <span className="brand-name">AskFilm</span>
         </a>
         <nav className="main-nav" aria-label="Seções do AskFilm">
-          <button type="button" onClick={() => setActiveMode("search")}>{labels.search}</button>
-          <button type="button" onClick={() => setActiveMode("recommend")}>{labels.aiRecommendation}</button>
-          <a href="#results">{labels.myList}</a>
-          <a href="#about-help">{labels.about}</a>
-          <button type="button" className="language-toggle" onClick={toggleLanguage} aria-label="PT-BR / EN">
-            {language === "pt-BR" ? "PT-BR" : "EN"}
-          </button>
-          <button type="button" id="about-help" className="help-button" aria-label={labels.about}>
-            ?
-            <span className="help-tooltip" role="tooltip">{labels.help}</span>
-          </button>
+          <button type="button" onClick={() => setActiveMode("search")}>Buscar</button>
+          <button type="button" onClick={() => setActiveMode("recommend")}>Recomendar com IA</button>
+          <a href="#results">Minha Lista</a>
+          <a href="#how-it-works">Sobre</a>
+          <button type="button" onClick={() => setLanguage((current) => current === "pt-BR" ? "en" : "pt-BR")} aria-label="Alternar idioma">{language === "pt-BR" ? "PT-BR" : "EN"}</button>
         </nav>
       </header>
 
@@ -651,7 +784,8 @@ export default function Home() {
           details={selectedDetails}
           isLoading={isDetailsLoading}
           error={detailsError}
-          labels={labels}
+          language={language}
+          synopsis={language === "pt-BR" ? (translatedSynopsis || (isSynopsisTranslating ? "" : selectedDetails?.Plot ?? "")) : hasValue(selectedDetails?.Plot) ? selectedDetails?.Plot ?? "" : ""}
           onClose={closeDetails}
         />
       )}
