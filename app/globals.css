@@ -1012,10 +1012,13 @@ p {
 
 /* Harmonized main interaction area and restored details flow */
 .interaction-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   width: 100%;
-  min-height: 452px;
+  height: 450px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .mode-toggle button {
@@ -1026,13 +1029,19 @@ p {
 }
 
 .panel-section {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   gap: 18px;
-  min-height: 360px;
+  min-height: 0;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.045);
   border-radius: 24px;
   background: rgba(25, 22, 17, 0.42);
+}
+
+.panel-section:has(.spotlight-search) {
+  justify-content: center;
 }
 
 .mode-heading {
@@ -1055,6 +1064,7 @@ p {
 
 .spotlight-search {
   min-height: 66px;
+  flex: 0 0 auto;
 }
 
 .gold-button {
@@ -1062,8 +1072,14 @@ p {
 }
 
 .ai-prompt-card {
-  align-self: stretch;
-  grid-template-rows: auto minmax(132px, auto) auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.ai-prompt-card textarea {
+  min-height: 0;
+  resize: none;
 }
 
 .prompt-footer {
@@ -1215,11 +1231,11 @@ p {
 
 @media (max-width: 760px) {
   .interaction-panel {
-    min-height: 438px;
+    height: 438px;
   }
 
   .panel-section {
-    min-height: 334px;
+    min-height: 0;
     padding: 18px;
   }
 
