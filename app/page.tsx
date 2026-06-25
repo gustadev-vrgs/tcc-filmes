@@ -39,13 +39,47 @@ type MovieDetails = SearchItem & {
   imdbRating?: string;
 };
 
-const placeholderExamples = ["Busque por um título...", "Ex.: filme de mistério", "Ex.: série de ficção científica"];
-const suggestionChips = [
-  "Anime psicológico e perturbador",
-  "Thriller nórdico estilo True Detective",
-  "Filme para choro em família",
-  "Comédia britânica anos 90"
-];
+const translations = {
+  "pt-BR": {
+    search: "Buscar", aiRecommendation: "Recomendar com IA", myList: "Minha Lista", about: "Sobre",
+    searchByTitle: "Busque por título", searchPlaceholder: "Busque por um título...", searchLoading: "Buscando", getRecommendation: "Pedir recomendação",
+    tellUs: "Conte o que quer assistir", describeMood: "Descreva seu momento, humor ou referência cinematográfica.", yourCuration: "Sua curadoria",
+    all: "Todos", movie: "Filme", series: "Série", previous: "Anterior", next: "Próximo", catalog: "CATÁLOGO", recommendation: "RECOMENDAÇÃO",
+    heroTitle: "Encontre o filme certo para o seu momento.", heroText: "Busque títulos ou descreva seu humor para receber uma curadoria mais inteligente, sem ruído visual.",
+    results: "Resultados", initialStatus: "Digite uma busca ou peça uma recomendação para começar.", emptyState: "Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.",
+    titleRequired: "Informe um título, gênero ou referência para buscar.", searchingTitles: "Buscando títulos...", loadingPage: "Carregando página", unableSearch: "Não foi possível buscar agora.",
+    foundPrefix: "Encontramos", resultSingular: "resultado", resultPlural: "resultados", forText: "para", pageText: "Página", ofText: "de",
+    requestReceived: "Pedido recebido. A integração com IA foi preservada; nenhum card fictício será exibido sem uma resposta conectada.", describeToRecommend: "Descreva o que você quer assistir para pedir uma recomendação.",
+    aiPlaceholder: "Ex.: Quero algo melancólico, visualmente sofisticado, com ritmo contemplativo e final marcante.", suggestionsLabel: "Sugestões de prompts", filtersLabel: "Filtros de resultados", resultsLabel: "Resultados de busca audiovisual", loadingResults: "Carregando resultados",
+    openDetails: "Abrir detalhes de", posterOf: "Pôster de", closeDetails: "Fechar detalhes", loadingDetails: "Carregando detalhes...", unableDetails: "Não foi possível abrir os detalhes agora.",
+    runtimeUnavailable: "Duração indisponível", ratingUnavailable: "Nota indisponível", plotUnavailable: "Sinopse indisponível.", genre: "Gênero", direction: "Direção / criação", cast: "Elenco", type: "Tipo", unavailable: "Indisponível",
+    help: "Pesquise um título ou descreva o que quer assistir. O AskFilm busca resultados reais e mostra filmes ou séries relacionados.", footer: "AskFilm © 2026 — Curadoria audiovisual com IA"
+  },
+  en: {
+    search: "Search", aiRecommendation: "AI Recommendation", myList: "My List", about: "About",
+    searchByTitle: "Search by title", searchPlaceholder: "Search for a title...", searchLoading: "Searching", getRecommendation: "Get recommendation",
+    tellUs: "Tell us what you want to watch", describeMood: "Describe your mood, moment, or cinematic reference.", yourCuration: "Your curation",
+    all: "All", movie: "Movie", series: "Series", previous: "Previous", next: "Next", catalog: "CATALOG", recommendation: "RECOMMENDATION",
+    heroTitle: "Find the right film for your moment.", heroText: "Search titles or describe your mood to get smarter curation without visual noise.",
+    results: "Results", initialStatus: "Enter a search or ask for a recommendation to get started.", emptyState: "Use search or describe what you want above. Results will appear here only after your action.",
+    titleRequired: "Enter a title, genre, or reference to search.", searchingTitles: "Searching titles...", loadingPage: "Loading page", unableSearch: "Search is unavailable right now.",
+    foundPrefix: "Found", resultSingular: "result", resultPlural: "results", forText: "for", pageText: "Page", ofText: "of",
+    requestReceived: "Request received. The AI integration was preserved; no fake cards will be shown without a connected response.", describeToRecommend: "Describe what you want to watch to request a recommendation.",
+    aiPlaceholder: "E.g.: I want something melancholy, visually sophisticated, contemplative, with a striking ending.", suggestionsLabel: "Prompt suggestions", filtersLabel: "Result filters", resultsLabel: "Audiovisual search results", loadingResults: "Loading results",
+    openDetails: "Open details for", posterOf: "Poster for", closeDetails: "Close details", loadingDetails: "Loading details...", unableDetails: "Details are unavailable right now.",
+    runtimeUnavailable: "Runtime unavailable", ratingUnavailable: "Rating unavailable", plotUnavailable: "Plot unavailable.", genre: "Genre", direction: "Direction / creation", cast: "Cast", type: "Type", unavailable: "Unavailable",
+    help: "Search for a title or describe what you want to watch. AskFilm finds real results and shows related movies or series.", footer: "AskFilm © 2026 — Audiovisual curation with AI"
+  }
+} as const;
+
+const placeholderExamples: Record<Language, string[]> = {
+  "pt-BR": ["Busque por um título...", "Ex.: filme de mistério", "Ex.: série de ficção científica"],
+  en: ["Search for a title...", "E.g.: mystery movie", "E.g.: science fiction series"]
+};
+const suggestionChips: Record<Language, string[]> = {
+  "pt-BR": ["Anime psicológico e perturbador", "Thriller nórdico estilo True Detective", "Filme para choro em família", "Comédia britânica anos 90"],
+  en: ["Dark psychological anime", "Nordic thriller like True Detective", "Family tearjerker movie", "90s British comedy"]
+};
 const filterOptions: FilterKey[] = ["Todos", "Filme", "Série"];
 
 const detailsCopy = {
@@ -145,17 +179,19 @@ function SearchBar({
   isLoading,
   placeholder,
   value,
+  labels,
   onChange,
   onSubmit
 }: {
   isLoading: boolean;
   placeholder: string;
   value: string;
+  labels: (typeof translations)[Language];
   onChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="spotlight-search" onSubmit={onSubmit} aria-label="Busca por título">
+    <form className="spotlight-search" onSubmit={onSubmit} aria-label={labels.searchByTitle}>
       <span className="search-icon" aria-hidden="true">⌕</span>
       <input
         id="title-search"
@@ -167,7 +203,7 @@ function SearchBar({
         onChange={(event) => onChange(event.target.value)}
       />
       <button type="submit" className="gold-button" disabled={isLoading}>
-        {isLoading ? "Buscando" : "Buscar"}
+        {isLoading ? labels.searchLoading : labels.search}
       </button>
     </form>
   );
@@ -176,28 +212,32 @@ function SearchBar({
 function AIPromptBox({
   isLoading,
   value,
+  labels,
+  chips,
   onChange,
   onSubmit
 }: {
   isLoading: boolean;
   value: string;
+  labels: (typeof translations)[Language];
+  chips: string[];
   onChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="ai-prompt-card" onSubmit={onSubmit} aria-label="Recomendação por IA generativa">
-      <label htmlFor="ai-recommendation">Descreva seu momento, humor ou referência cinematográfica.</label>
+    <form className="ai-prompt-card" onSubmit={onSubmit} aria-label={labels.aiRecommendation}>
+      <label htmlFor="ai-recommendation">{labels.describeMood}</label>
       <textarea
         id="ai-recommendation"
         name="recommendation"
-        placeholder="Ex.: Quero algo melancólico, visualmente sofisticado, com ritmo contemplativo e final marcante."
+        placeholder={labels.aiPlaceholder}
         rows={4}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
       <div className="prompt-footer">
-        <div className="suggestion-chips" aria-label="Sugestões de prompts">
-          {suggestionChips.map((chip) => (
+        <div className="suggestion-chips" aria-label={labels.suggestionsLabel}>
+          {chips.map((chip) => (
             <button key={chip} type="button" onClick={() => onChange(chip)}>
               {chip}
             </button>
@@ -205,16 +245,23 @@ function AIPromptBox({
         </div>
         <button type="submit" className="gold-button sparkle-button" disabled={isLoading}>
           <span aria-hidden="true">✦</span>
-          Pedir recomendação
+          {labels.getRecommendation}
         </button>
       </div>
     </form>
   );
 }
 
-function FilterBar({ activeFilter, onChange }: { activeFilter: FilterKey; onChange: (filter: FilterKey) => void }) {
+function translateFilter(filter: FilterKey, labels: (typeof translations)[Language]) {
+  if (filter === "Todos") return labels.all;
+  if (filter === "Filme") return labels.movie;
+  if (filter === "Série") return labels.series;
+  return filter;
+}
+
+function FilterBar({ activeFilter, labels, onChange }: { activeFilter: FilterKey; labels: (typeof translations)[Language]; onChange: (filter: FilterKey) => void }) {
   return (
-    <div className="filter-bar" aria-label="Filtros de resultados">
+    <div className="filter-bar" aria-label={labels.filtersLabel}>
       {filterOptions.map((filter) => (
         <button
           type="button"
@@ -222,39 +269,39 @@ function FilterBar({ activeFilter, onChange }: { activeFilter: FilterKey; onChan
           className={activeFilter === filter ? "filter-pill active" : "filter-pill"}
           onClick={() => onChange(filter)}
         >
-          {filter}
+          {translateFilter(filter, labels)}
         </button>
       ))}
     </div>
   );
 }
 
-function MovieCard({ item, onSelect }: { item: CatalogItem; onSelect: (item: CatalogItem) => void }) {
+function MovieCard({ item, labels, onSelect }: { item: CatalogItem; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void }) {
   const hasPoster = item.poster && item.poster !== "N/A";
 
   return (
-    <article className="movie-card" aria-label={`${item.title}, ${item.type}`}>
+    <article className="movie-card" aria-label={`${item.title}, ${translateFilter(item.type, labels)}`}>
       <button
         type="button"
         className="poster-art real-poster poster-button"
         onClick={() => onSelect(item)}
-        aria-label={`Abrir detalhes de ${item.title}`}
+        aria-label={`${labels.openDetails} ${item.title}`}
       >
-        {hasPoster ? <img src={item.poster} alt={`Pôster de ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
-        <span className="type-badge">{item.type.toUpperCase()}</span>
+        {hasPoster ? <img src={item.poster} alt={`${labels.posterOf} ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
+        <span className="type-badge">{translateFilter(item.type, labels).toUpperCase()}</span>
       </button>
       <div className="movie-caption">
         <h3>{item.title}</h3>
-        <p>{item.year} • {item.type}</p>
+        <p>{item.year} • {translateFilter(item.type, labels)}</p>
       </div>
     </article>
   );
 }
 
-function ResultsGrid({ isLoading, items, onSelect }: { isLoading: boolean; items: CatalogItem[]; onSelect: (item: CatalogItem) => void }) {
+function ResultsGrid({ isLoading, items, labels, onSelect }: { isLoading: boolean; items: CatalogItem[]; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void }) {
   if (isLoading) {
     return (
-      <div className="results-grid" aria-label="Carregando resultados">
+      <div className="results-grid" aria-label={labels.loadingResults}>
         {Array.from({ length: 4 }).map((_, index) => (
           <div className="skeleton-card" key={index}>
             <span />
@@ -266,9 +313,9 @@ function ResultsGrid({ isLoading, items, onSelect }: { isLoading: boolean; items
   }
 
   return (
-    <div className="results-grid" aria-label="Resultados de busca audiovisual">
+    <div className="results-grid" aria-label={labels.resultsLabel}>
       {items.map((item) => (
-        <MovieCard item={item} key={item.id} onSelect={onSelect} />
+        <MovieCard item={item} key={item.id} labels={labels} onSelect={onSelect} />
       ))}
     </div>
   );
@@ -307,11 +354,13 @@ function Pagination({
   currentPage,
   totalPages,
   isLoading,
+  labels,
   onPageChange
 }: {
   currentPage: number;
   totalPages: number;
   isLoading: boolean;
+  labels: (typeof translations)[Language];
   onPageChange: (page: number) => void;
 }) {
   if (totalPages <= 1) {
@@ -321,9 +370,9 @@ function Pagination({
   const pageItems = getPaginationRange(currentPage, totalPages);
 
   return (
-    <nav className="pagination" aria-label="Paginação dos resultados">
+    <nav className="pagination" aria-label={labels.results}>
       <button type="button" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1 || isLoading}>
-        Anterior
+        {labels.previous}
       </button>
       <div className="pagination-pages">
         {pageItems.map((page) =>
@@ -344,7 +393,7 @@ function Pagination({
         )}
       </div>
       <button type="button" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages || isLoading}>
-        Próximo
+        {labels.next}
       </button>
     </nav>
   );
@@ -415,12 +464,13 @@ function DetailsModal({
 
 export default function Home() {
   const [activeMode, setActiveMode] = useState<ActiveMode>("recommend");
+  const [language, setLanguage] = useState<Language>("pt-BR");
   const [searchTitle, setSearchTitle] = useState("");
   const [recommendationPrompt, setRecommendationPrompt] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Todos");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("Digite uma busca ou peça uma recomendação para começar.");
+  const [statusMessage, setStatusMessage] = useState<string>(translations["pt-BR"].initialStatus);
   const [visibleItems, setVisibleItems] = useState<CatalogItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<MovieDetails | null>(null);
@@ -433,13 +483,22 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(0);
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const resultsRef = useRef<HTMLElement | null>(null);
+  const labels = translations[language];
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setPlaceholderIndex((currentIndex) => (currentIndex + 1) % placeholderExamples.length);
+      setPlaceholderIndex((currentIndex) => (currentIndex + 1) % placeholderExamples[language].length);
     }, 2200);
 
     return () => window.clearInterval(interval);
+  }, [language]);
+
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem("askfilm-language");
+    if (savedLanguage === "pt-BR" || savedLanguage === "en") {
+      setLanguage(savedLanguage);
+      setStatusMessage(translations[savedLanguage].initialStatus);
+    }
   }, []);
 
   useEffect(() => {
@@ -515,14 +574,14 @@ export default function Home() {
   async function runTitleSearch(query: string, page = 1) {
     setIsLoading(true);
     setHasSearched(true);
-    setStatusMessage(page === 1 ? "Buscando títulos..." : `Carregando página ${page}...`);
+    setStatusMessage(page === 1 ? labels.searchingTitles : `${labels.loadingPage} ${page}...`);
 
     try {
       const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}&page=${page}`);
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível buscar agora.");
+        throw new Error(data.error ?? labels.unableSearch);
       }
 
       const payload = data as OmdbSearchPayload;
@@ -535,14 +594,14 @@ export default function Home() {
       setTotalPages(nextTotalPages);
       setLastSearchQuery(query);
       setStatusMessage(
-        `Encontramos ${totalResults} resultado${totalResults === 1 ? "" : "s"} para “${query}”. Página ${page} de ${nextTotalPages}.`
+        `${labels.foundPrefix} ${totalResults} ${totalResults === 1 ? labels.resultSingular : labels.resultPlural} ${labels.forText} “${query}”. ${labels.pageText} ${page} ${labels.ofText} ${nextTotalPages}.`
       );
       scrollToResults();
     } catch (error) {
       setVisibleItems([]);
       setCurrentPage(1);
       setTotalPages(0);
-      setStatusMessage(error instanceof Error ? error.message : "Não foi possível buscar agora.");
+      setStatusMessage(error instanceof Error ? error.message : labels.unableSearch);
     } finally {
       setIsLoading(false);
     }
@@ -561,7 +620,7 @@ export default function Home() {
       setTotalPages(0);
       setLastSearchQuery("");
       setHasSearched(true);
-      setStatusMessage("Informe um título, gênero ou referência para buscar.");
+      setStatusMessage(labels.titleRequired);
       return;
     }
 
@@ -578,12 +637,12 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível abrir os detalhes agora.");
+        throw new Error(data.error ?? labels.unableDetails);
       }
 
       setSelectedDetails(data as MovieDetails);
     } catch (error) {
-      setDetailsError(error instanceof Error ? error.message : "Não foi possível abrir os detalhes agora.");
+      setDetailsError(error instanceof Error ? error.message : labels.unableDetails);
     } finally {
       setIsDetailsLoading(false);
     }
@@ -606,8 +665,8 @@ export default function Home() {
     setLastSearchQuery("");
     setStatusMessage(
       recommendationPrompt.trim()
-        ? "Pedido recebido. A integração com IA foi preservada; nenhum card fictício será exibido sem uma resposta conectada."
-        : "Descreva o que você quer assistir para pedir uma recomendação."
+        ? labels.requestReceived
+        : labels.describeToRecommend
     );
     scrollToResults();
   }
@@ -645,8 +704,8 @@ export default function Home() {
       <section className="hero-section" id="top" aria-labelledby="hero-title">
         <div className="hero-copy">
           <p className="eyebrow">AskFilm</p>
-          <h1 id="hero-title">Encontre o filme certo para o seu momento.</h1>
-          <p>Busque títulos ou descreva seu humor para receber uma curadoria mais inteligente, sem ruído visual.</p>
+          <h1 id="hero-title">{labels.heroTitle}</h1>
+          <p>{labels.heroText}</p>
         </div>
 
         <div className="interaction-panel" aria-label="Modos de interação">
@@ -658,7 +717,7 @@ export default function Home() {
               role="tab"
               aria-selected={activeMode === "search"}
             >
-              Buscar
+              {labels.search}
             </button>
             <button
               type="button"
@@ -667,20 +726,21 @@ export default function Home() {
               role="tab"
               aria-selected={activeMode === "recommend"}
             >
-              Recomendar com IA
+              {labels.aiRecommendation}
             </button>
           </div>
 
           <div className="panel-section">
             <div className="mode-heading">
-              <span>{activeMode === "search" ? "CATÁLOGO" : "RECOMENDAÇÃO"}</span>
-              <h2>{activeMode === "search" ? "Busque por título" : "Conte o que quer assistir"}</h2>
+              <span>{activeMode === "search" ? labels.catalog : labels.recommendation}</span>
+              <h2>{activeMode === "search" ? labels.searchByTitle : labels.tellUs}</h2>
             </div>
             {activeMode === "search" ? (
               <SearchBar
                 isLoading={isLoading}
-                placeholder={placeholderExamples[placeholderIndex]}
+                placeholder={placeholderExamples[language][placeholderIndex]}
                 value={searchTitle}
+                labels={labels}
                 onChange={setSearchTitle}
                 onSubmit={handleTitleSearch}
               />
@@ -688,6 +748,8 @@ export default function Home() {
               <AIPromptBox
                 isLoading={isLoading}
                 value={recommendationPrompt}
+                labels={labels}
+                chips={suggestionChips[language]}
                 onChange={setRecommendationPrompt}
                 onSubmit={handleRecommendation}
               />
@@ -699,44 +761,22 @@ export default function Home() {
       <section className="results-section" id="results" aria-labelledby="results-title" ref={resultsRef}>
         <div className="results-heading">
           <div>
-            <p className="eyebrow">Resultados</p>
-            <h2 id="results-title">Sua curadoria</h2>
+            <p className="eyebrow">{labels.results}</p>
+            <h2 id="results-title">{labels.yourCuration}</h2>
           </div>
           <div className="status-badge" aria-live="polite">{statusMessage}</div>
         </div>
-        {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} onChange={setActiveFilter} />}
+        {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} labels={labels} onChange={setActiveFilter} />}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
           <>
-            <ResultsGrid isLoading={isLoading} items={filteredItems} onSelect={handleSelectMovie} />
-            <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} onPageChange={handlePageChange} />
+            <ResultsGrid isLoading={isLoading} items={filteredItems} labels={labels} onSelect={handleSelectMovie} />
+            <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} labels={labels} onPageChange={handlePageChange} />
           </>
         ) : (
           <div className="empty-state">
-            <p>Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.</p>
+            <p>{labels.emptyState}</p>
           </div>
         )}
-      </section>
-
-      <section className="how-it-works" id="how-it-works" aria-labelledby="how-title">
-        <p className="eyebrow">Como funciona</p>
-        <h2 id="how-title">Da vontade vaga ao título certo.</h2>
-        <div className="steps-grid">
-          <article>
-            <span>01</span>
-            <h3>Descreva o que quer</h3>
-            <p>Use uma referência, gênero, humor ou restrição de tempo.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>Busque ou peça IA</h3>
-            <p>A tela prioriza sua intenção e evita cards fixos de demonstração.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>Explore resultados reais</h3>
-            <p>Os cards aparecem apenas após uma busca ou resposta conectada ao fluxo atual.</p>
-          </article>
-        </div>
       </section>
 
       {(isDetailsLoading || selectedDetails || detailsError) && (
@@ -750,7 +790,7 @@ export default function Home() {
         />
       )}
 
-      <footer className="site-footer">AskFilm © 2026 — Curadoria audiovisual com IA</footer>
+      <footer className="site-footer">{labels.footer}</footer>
     </main>
   );
 }
