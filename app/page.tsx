@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série" | "Anime" | "Doc";
@@ -19,6 +19,11 @@ type CatalogItem = {
   year: string;
   type: Exclude<FilterKey, "Todos">;
   poster: string;
+};
+
+type OmdbSearchPayload = {
+  Search: SearchItem[];
+  totalResults: string;
 };
 
 type MovieDetails = SearchItem & {
@@ -153,18 +158,18 @@ function MovieCard({ item, onSelect }: { item: CatalogItem; onSelect: (item: Cat
 
   return (
     <article className="movie-card" aria-label={`${item.title}, ${item.type}`}>
-      <div className="poster-art real-poster">
+      <button
+        type="button"
+        className="poster-art real-poster poster-button"
+        onClick={() => onSelect(item)}
+        aria-label={`Abrir detalhes de ${item.title}`}
+      >
         {hasPoster ? <img src={item.poster} alt={`Pôster de ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
         <span className="type-badge">{item.type.toUpperCase()}</span>
-      </div>
+      </button>
       <div className="movie-caption">
-        <div>
-          <h3>{item.title}</h3>
-          <p>{item.year} • {item.type}</p>
-        </div>
-        <button type="button" className="details-link" onClick={() => onSelect(item)}>
-          Ver detalhes
-        </button>
+        <h3>{item.title}</h3>
+        <p>{item.year} • {item.type}</p>
       </div>
     </article>
   );
@@ -190,6 +195,82 @@ function ResultsGrid({ isLoading, items, onSelect }: { isLoading: boolean; items
         <MovieCard item={item} key={item.id} onSelect={onSelect} />
       ))}
     </div>
+  );
+}
+
+function getPaginationRange(currentPage: number, totalPages: number) {
+  const pages: Array<number | "ellipsis-left" | "ellipsis-right"> = [];
+
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  pages.push(1);
+
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+
+  if (start > 2) {
+    pages.push("ellipsis-left");
+  }
+
+  for (let page = start; page <= end; page += 1) {
+    pages.push(page);
+  }
+
+  if (end < totalPages - 1) {
+    pages.push("ellipsis-right");
+  }
+
+  pages.push(totalPages);
+
+  return pages;
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  isLoading,
+  onPageChange
+}: {
+  currentPage: number;
+  totalPages: number;
+  isLoading: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) {
+    return null;
+  }
+
+  const pageItems = getPaginationRange(currentPage, totalPages);
+
+  return (
+    <nav className="pagination" aria-label="Paginação dos resultados">
+      <button type="button" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1 || isLoading}>
+        Anterior
+      </button>
+      <div className="pagination-pages">
+        {pageItems.map((page) =>
+          typeof page === "number" ? (
+            <button
+              type="button"
+              key={page}
+              className={page === currentPage ? "active" : ""}
+              onClick={() => onPageChange(page)}
+              disabled={page === currentPage || isLoading}
+              aria-current={page === currentPage ? "page" : undefined}
+            >
+              {page}
+            </button>
+          ) : (
+            <span key={page} aria-hidden="true">…</span>
+          )
+        )}
+      </div>
+      <button type="button" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages || isLoading}>
+        Próximo
+      </button>
+    </nav>
   );
 }
 
@@ -262,6 +343,10 @@ export default function Home() {
   const [selectedDetails, setSelectedDetails] = useState<MovieDetails | null>(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [lastSearchQuery, setLastSearchQuery] = useState("");
+  const resultsRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -273,40 +358,66 @@ export default function Home() {
 
   const filteredItems = activeFilter === "Todos" ? visibleItems : visibleItems.filter((item) => item.type === activeFilter);
 
-  async function handleTitleSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setActiveMode("search");
+  function scrollToResults() {
+    window.setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
+
+  async function runTitleSearch(query: string, page = 1) {
     setIsLoading(true);
     setHasSearched(true);
-    setStatusMessage("Buscando títulos...");
-    setActiveFilter("Todos");
-
-    const query = searchTitle.trim();
-
-    if (!query) {
-      setVisibleItems([]);
-      setStatusMessage("Informe um título, gênero ou referência para buscar.");
-      setIsLoading(false);
-      return;
-    }
+    setStatusMessage(page === 1 ? "Buscando títulos..." : `Carregando página ${page}...`);
 
     try {
-      const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}&page=${page}`);
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error ?? "Não foi possível buscar agora.");
       }
 
-      const items = (data.Search as SearchItem[]).map(mapSearchItem);
+      const payload = data as OmdbSearchPayload;
+      const items = payload.Search.map(mapSearchItem);
+      const totalResults = Number(payload.totalResults);
+      const nextTotalPages = Number.isFinite(totalResults) ? Math.ceil(totalResults / 10) : 0;
+
       setVisibleItems(items);
-      setStatusMessage(`Encontramos ${items.length} resultado${items.length === 1 ? "" : "s"} para “${query}”.`);
+      setCurrentPage(page);
+      setTotalPages(nextTotalPages);
+      setLastSearchQuery(query);
+      setStatusMessage(
+        `Encontramos ${totalResults} resultado${totalResults === 1 ? "" : "s"} para “${query}”. Página ${page} de ${nextTotalPages}.`
+      );
+      scrollToResults();
     } catch (error) {
       setVisibleItems([]);
+      setCurrentPage(1);
+      setTotalPages(0);
       setStatusMessage(error instanceof Error ? error.message : "Não foi possível buscar agora.");
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleTitleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActiveMode("search");
+    setActiveFilter("Todos");
+
+    const query = searchTitle.trim();
+
+    if (!query) {
+      setVisibleItems([]);
+      setCurrentPage(1);
+      setTotalPages(0);
+      setLastSearchQuery("");
+      setHasSearched(true);
+      setStatusMessage("Informe um título, gênero ou referência para buscar.");
+      return;
+    }
+
+    await runTitleSearch(query, 1);
   }
 
   async function handleSelectMovie(item: CatalogItem) {
@@ -341,11 +452,23 @@ export default function Home() {
     setActiveMode("recommend");
     setHasSearched(true);
     setVisibleItems([]);
+    setCurrentPage(1);
+    setTotalPages(0);
+    setLastSearchQuery("");
     setStatusMessage(
       recommendationPrompt.trim()
         ? "Pedido recebido. A integração com IA foi preservada; nenhum card fictício será exibido sem uma resposta conectada."
         : "Descreva o que você quer assistir para pedir uma recomendação."
     );
+    scrollToResults();
+  }
+
+  function handlePageChange(page: number) {
+    if (!lastSearchQuery || page < 1 || page > totalPages || page === currentPage) {
+      return;
+    }
+
+    void runTitleSearch(lastSearchQuery, page);
   }
 
   return (
@@ -377,7 +500,7 @@ export default function Home() {
         </div>
 
         <div className="interaction-panel" aria-label="Modos de interação">
-          <div className="mode-toggle" role="tablist" aria-label="Escolha um modo">
+          <div className={`mode-toggle ${activeMode === "search" ? "is-search" : "is-recommend"}`} role="tablist" aria-label="Escolha um modo">
             <button
               type="button"
               className={activeMode === "search" ? "active" : ""}
@@ -423,7 +546,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="results-section" id="results" aria-labelledby="results-title">
+      <section className="results-section" id="results" aria-labelledby="results-title" ref={resultsRef}>
         <div className="results-heading">
           <div>
             <p className="eyebrow">Resultados</p>
@@ -433,7 +556,10 @@ export default function Home() {
         </div>
         {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} onChange={setActiveFilter} />}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
-          <ResultsGrid isLoading={isLoading} items={filteredItems} onSelect={handleSelectMovie} />
+          <>
+            <ResultsGrid isLoading={isLoading} items={filteredItems} onSelect={handleSelectMovie} />
+            <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} onPageChange={handlePageChange} />
+          </>
         ) : (
           <div className="empty-state">
             <p>Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.</p>
