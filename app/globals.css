@@ -1172,9 +1172,24 @@ p {
   font-weight: 800;
 }
 
+.details-synopsis {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.details-synopsis span {
+  color: var(--accent-gold-dim);
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .details-plot {
   color: rgba(240, 237, 232, 0.82);
   line-height: 1.72;
+  margin: 0;
 }
 
 .details-list {
