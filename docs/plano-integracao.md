@@ -76,7 +76,7 @@ Nesta etapa, `lib/catalog.ts`, `lib/validation.ts` e `lib/local-storage.ts` inic
 1. **Preparação estrutural (concluída):** inventário, escopo, tipos de catálogo, validação da busca e módulo seguro de persistência local.
 2. **Catálogo e detalhes (base concluída):** clientes server-only OMDb/TMDB, contratos normalizados, erros e operações de catálogo estão disponíveis. A apresentação dos complementos TMDB na tela de detalhes ainda precisa ser implementada com fallbacks.
 3. **Minha lista:** conectar controles em cards/detalhes, criar visualização vazia/preenchida e sincronizar a mesma aba pelo evento de storage/custom event. Nunca enviar a lista ao servidor.
-4. **IA hospedada:** criar rota Next.js validada para OpenAI, controlar tamanho/forma da entrada e transformar recomendações em títulos reais resolvidos pelo catálogo. Exibir erros reais; nunca cards simulados.
+4. **IA hospedada (base concluída, interface pendente):** serviço e rota OpenAI validados, desativados por padrão e com operações restritas. Ainda é preciso transformar recomendações em títulos reais resolvidos pelo catálogo e conectá-las à interface; nunca exibir cards simulados.
 5. **WebLLM opcional:** avaliar compatibilidade/browser, consentimento para download e fallback. Não bloquear a experiência principal nem armazenar chaves.
 6. **Interface e i18n:** decompor a página em componentes, completar traduções, navegação/modal/acessibilidade e adequar os recursos escolhidos do protótipo à identidade atual sem importar seu CSS integral.
 7. **Qualidade e entrega:** adicionar testes unitários para validação/storage, testes de rotas com serviços simulados, fluxo E2E essencial, documentação de ambiente e verificação em viewport desktop/celular.
@@ -94,10 +94,13 @@ Nesta etapa, `lib/catalog.ts`, `lib/validation.ts` e `lib/local-storage.ts` inic
 - [x] Serviço TMDB HTTPS restrito a busca, descoberta, relacionados, destaques, elenco, vídeos, provedores e resolução IMDb/TMDB.
 - [x] Busca da interface conectada ao contrato normalizado, com filtro aplicado pelo provedor antes da paginação e cancelamento/descarte de respostas antigas.
 - [x] Testes automatizados com provedores simulados para paginação, pôster ausente, erros, timeout, resposta inválida, dados parciais e pesquisas concorrentes.
+- [x] Serviço OpenAI reutilizável e rota específica com prompts no servidor, Structured Outputs, allowlist de modelo, limites, timeout, cancelamento, uma única tentativa adicional e erros classificados.
+- [x] Guia de ativação e regra de rate limit no Vercel Firewall, com limitações de IP/região/domínios e registro separado da validação real.
 
 ## 7. Pendências reais e dependências externas
 
-- [ ] Implementar endpoint OpenAI com `OPENAI_API_KEY` apenas no servidor e resposta estruturada/validada.
+- [ ] Reconfirmar online a documentação, disponibilidade/preço do modelo e regras/plano reais da Vercel; o ambiente de desenvolvimento bloqueou as consultas oficiais em 15/09/2026.
+- [ ] Conectar a base de IA à interface e resolver recomendações pelo catálogo.
 - [ ] Conectar Minha lista aos cards, ao modal e à navegação.
 - [ ] Decidir e documentar se YouTube Data API é necessária; trailers TMDB devem ser o primeiro caminho.
 - [ ] Avaliar WebLLM como melhoria opcional, não como requisito para concluir catálogo/IA hospedada.
