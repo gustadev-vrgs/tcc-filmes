@@ -20,7 +20,7 @@ test("uses the fixed Responses endpoint, structured output and server limits", a
   let request: { url?: string; init?: RequestInit } = {};
   const result = await runAi({ operation: "interpret_request", text: "terror lento", language: "pt-BR" }, { env, fetch: async (url, init) => {
     request = { url: String(url), init };
-    return success({ intent: "terror lento", genres: ["terror"], moods: ["tenso"], constraints: [] });
+    return success({ criteria: { version: 1, mediaType: "movie", required: { genres: ["Horror"], yearFrom: null, yearTo: null }, preferences: { sort: "popularity" }, similarTo: null, requestedCount: 6, clarification: null, limitations: ["Ritmo não é verificável no catálogo."] } });
   } });
   assert.equal(result.operation, "interpret_request");
   assert.equal(request.url, "https://api.openai.com/v1/responses");

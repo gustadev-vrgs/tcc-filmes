@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { type CatalogItem, type Language, type MovieDetails } from "../lib/catalog";
 import { getLanguagePreference, getLegacyFavoriteIds, loadMyList, MAX_LIST_ITEMS, mergeMyLists, MY_LIST_KEY, parseMyListJson, persistMyList, safePosterUrl, saveLanguagePreference, type MyListItem } from "../lib/local-storage";
 import { isCatalogSearchPayload } from "../lib/validation";
+import { isRecommendationResponse } from "../lib/recommendation";
 
 type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série";
@@ -18,7 +19,7 @@ const translations = {
     results: "Resultados", initialStatus: "Digite uma busca ou peça uma recomendação para começar.", emptyState: "Use a busca ou descreva uma vontade acima. Os resultados aparecerão aqui somente depois da sua ação.",
     titleRequired: "Informe um título, gênero ou referência para buscar.", searchingTitles: "Buscando títulos...", loadingPage: "Carregando página", unableSearch: "Não foi possível buscar agora.",
     foundPrefix: "Encontramos", resultSingular: "resultado", resultPlural: "resultados", forText: "para", pageText: "Página", ofText: "de",
-    requestReceived: "Pedido recebido. A integração com IA foi preservada; nenhum card fictício será exibido sem uma resposta conectada.", describeToRecommend: "Descreva o que você quer assistir para pedir uma recomendação.",
+    requestReceived: "Pedido recebido.", describeToRecommend: "Descreva o que você quer assistir para pedir uma recomendação.", broadenSearch: "Ampliar busca removendo gênero e período", partialCatalog: "Parte do catálogo não respondeu.",
     aiPlaceholder: "Ex.: Quero algo melancólico, visualmente sofisticado, com ritmo contemplativo e final marcante.", suggestionsLabel: "Sugestões de prompts", filtersLabel: "Filtros de resultados", resultsLabel: "Resultados de busca audiovisual", loadingResults: "Carregando resultados",
     openDetails: "Abrir detalhes de", posterOf: "Pôster de", closeDetails: "Fechar detalhes", loadingDetails: "Carregando detalhes...", unableDetails: "Não foi possível abrir os detalhes agora.",
     runtimeUnavailable: "Duração indisponível", ratingUnavailable: "Nota indisponível", plotUnavailable: "Sinopse indisponível.", genre: "Gênero", direction: "Direção / criação", cast: "Elenco", type: "Tipo", unavailable: "Indisponível",
@@ -34,7 +35,7 @@ const translations = {
     results: "Results", initialStatus: "Enter a search or ask for a recommendation to get started.", emptyState: "Use search or describe what you want above. Results will appear here only after your action.",
     titleRequired: "Enter a title, genre, or reference to search.", searchingTitles: "Searching titles...", loadingPage: "Loading page", unableSearch: "Search is unavailable right now.",
     foundPrefix: "Found", resultSingular: "result", resultPlural: "results", forText: "for", pageText: "Page", ofText: "of",
-    requestReceived: "Request received. The AI integration was preserved; no fake cards will be shown without a connected response.", describeToRecommend: "Describe what you want to watch to request a recommendation.",
+    requestReceived: "Request received.", describeToRecommend: "Describe what you want to watch to request a recommendation.", broadenSearch: "Broaden search by removing genre and period", partialCatalog: "Part of the catalog did not respond.",
     aiPlaceholder: "E.g.: I want something melancholy, visually sophisticated, contemplative, with a striking ending.", suggestionsLabel: "Prompt suggestions", filtersLabel: "Result filters", resultsLabel: "Audiovisual search results", loadingResults: "Loading results",
     openDetails: "Open details for", posterOf: "Poster for", closeDetails: "Close details", loadingDetails: "Loading details...", unableDetails: "Details are unavailable right now.",
     runtimeUnavailable: "Runtime unavailable", ratingUnavailable: "Rating unavailable", plotUnavailable: "Plot unavailable.", genre: "Genre", direction: "Direction / creation", cast: "Cast", type: "Type", unavailable: "Unavailable",
@@ -171,6 +172,7 @@ function MovieCard({ item, labels, onSelect, saved, onToggle }: { item: CatalogI
       <div className="movie-caption">
         <h3>{item.title}</h3>
         <p>{item.year} • {translateFilter(item.type, labels)}</p>
+        {item.reason && <p className="recommendation-reason">{item.reason}</p>}
         <button type="button" className={`list-toggle ${saved ? "saved" : ""}`} onClick={() => onToggle(item)} aria-pressed={saved}>{saved ? `✓ ${labels.removeList}` : `＋ ${labels.addList}`}</button>
       </div>
     </article>
@@ -359,6 +361,8 @@ export default function Home() {
   const [showMyList, setShowMyList] = useState(false);
   const [myList, setMyList] = useState<MyListItem[] | null>(null);
   const [listNotice, setListNotice] = useState("");
+  const [canBroaden, setCanBroaden] = useState(false);
+  const [recommendationLimitations, setRecommendationLimitations] = useState<string[]>([]);
   const [storageLimited, setStorageLimited] = useState(false);
   const [legacyIds, setLegacyIds] = useState<string[]>([]);
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -367,6 +371,7 @@ export default function Home() {
   const detailsControllerRef = useRef<AbortController | null>(null);
   const searchSequenceRef = useRef(0);
   const detailsSequenceRef = useRef(0);
+  const recommendationInFlightRef = useRef<number | null>(null);
   const labels = translations[language];
 
   useEffect(() => {
@@ -465,6 +470,9 @@ export default function Home() {
 
   async function runTitleSearch(query: string, page = 1, filter = activeFilter) {
     searchControllerRef.current?.abort();
+    recommendationInFlightRef.current = null;
+    setCanBroaden(false);
+    setRecommendationLimitations([]);
     const controller = new AbortController();
     searchControllerRef.current = controller;
     const sequence = ++searchSequenceRef.current;
@@ -583,20 +591,39 @@ export default function Home() {
     setIsDetailsLoading(false);
   }
 
+  async function requestRecommendation(broaden = false) {
+    const prompt = recommendationPrompt.trim();
+    if (!prompt) { setStatusMessage(labels.describeToRecommend); setHasSearched(true); return; }
+    if (recommendationInFlightRef.current !== null) return;
+    searchControllerRef.current?.abort();
+    const controller = new AbortController(); searchControllerRef.current = controller;
+    const sequence = ++searchSequenceRef.current;
+    recommendationInFlightRef.current = sequence;
+    setIsLoading(true); setHasSearched(true); setShowMyList(false); setVisibleItems([]); setCanBroaden(false); setRecommendationLimitations([]); setStatusMessage(labels.requestReceived); scrollToResults();
+    try {
+      const response = await fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: prompt, language, broaden }), signal: controller.signal });
+      const data = await response.json();
+      if (sequence !== searchSequenceRef.current) return;
+      if (!response.ok) throw new Error(data.error ?? labels.unableSearch);
+      if (!isRecommendationResponse(data)) throw new Error(labels.unableSearch);
+      setVisibleItems(data.items); setCanBroaden(data.canBroaden); setRecommendationLimitations(data.limitations);
+      setStatusMessage(`${data.message}${data.partialFailures ? ` ${labels.partialCatalog}` : ""}`);
+    } catch (error) {
+      if (controller.signal.aborted || sequence !== searchSequenceRef.current) return;
+      setVisibleItems([]); setStatusMessage(error instanceof Error ? error.message : labels.unableSearch);
+    } finally {
+      if (recommendationInFlightRef.current === sequence) recommendationInFlightRef.current = null;
+      if (sequence === searchSequenceRef.current) setIsLoading(false);
+    }
+  }
+
   function handleRecommendation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActiveMode("recommend");
-    setHasSearched(true);
-    setVisibleItems([]);
     setCurrentPage(1);
     setTotalPages(0);
     setLastSearchQuery("");
-    setStatusMessage(
-      recommendationPrompt.trim()
-        ? labels.requestReceived
-        : labels.describeToRecommend
-    );
-    scrollToResults();
+    void requestRecommendation();
   }
 
   function handlePageChange(page: number) {
@@ -722,7 +749,8 @@ export default function Home() {
             ) : <div className="empty-state"><p>{labels.listEmpty}</p><button type="button" className="gold-button" onClick={() => { setShowMyList(false); setActiveMode("search"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{labels.searchAction}</button></div>}
           </div>
         ) : <>
-        {(visibleItems.length > 0 || lastSearchQuery) && <FilterBar activeFilter={activeFilter} labels={labels} onChange={handleFilterChange} />}
+        {lastSearchQuery && <FilterBar activeFilter={activeFilter} labels={labels} onChange={handleFilterChange} />}
+        {recommendationLimitations.length > 0 && <div className="recommendation-limitations" role="note"><ul>{recommendationLimitations.map((item) => <li key={item}>{item}</li>)}</ul></div>}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
           <>
             <ResultsGrid isLoading={isLoading} items={visibleItems} labels={labels} onSelect={handleSelectMovie} isSaved={matchesList} onToggle={toggleList} />
@@ -730,9 +758,11 @@ export default function Home() {
           </>
         ) : (
           <div className="empty-state">
-            <p>{labels.emptyState}</p>
+            <p>{hasSearched ? statusMessage : labels.emptyState}</p>
           </div>
-        )}</>}
+        )}
+        {canBroaden && !isLoading && <button type="button" className="broaden-button" onClick={() => void requestRecommendation(true)}>{labels.broadenSearch}</button>}
+        </>}
       </section>
 
       {(isDetailsLoading || selectedDetails || detailsError) && (

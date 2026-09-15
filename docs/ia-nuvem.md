@@ -23,7 +23,7 @@ Operações aceitas (nenhuma URL, endpoint, modelo ou limite vem do cliente):
 
 | Operação | Finalidade | Entrada principal | Contexto | Saída máx. |
 | --- | --- | ---: | ---: | ---: |
-| `interpret_request` | Extrair intenção, gêneros, humores e restrições | 2.000 caracteres | não aceito | 400 tokens |
+| `interpret_request` | Extrair contrato verificável de recomendação (tipo, gênero, período, referência e ordenação) | 2.000 caracteres | não aceito | 400 tokens |
 | `justify` | Justificar uma recomendação com dados fornecidos | 1.500 | 3.000 caracteres | 350 tokens |
 | `summarize` | Resumir conteúdo sem acrescentar fatos | 4.000 | não aceito | 450 tokens |
 | `chat` | Conversa audiovisual limitada | 1.500 | 2.000 caracteres | 500 tokens |

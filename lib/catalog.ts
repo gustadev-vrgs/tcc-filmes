@@ -18,6 +18,7 @@ export type CatalogItem = {
   year: string;
   type: CatalogKind;
   poster: string;
+  reason?: string;
 };
 
 export type MovieDetails = {
