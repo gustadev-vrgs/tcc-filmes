@@ -24,10 +24,10 @@ function apiKey() {
   return value;
 }
 
-function baseUrl(path: string) {
+function baseUrl(path: string, language: "pt-BR" | "en-US" = "pt-BR") {
   const url = new URL(`https://api.themoviedb.org/3${path}`);
   url.searchParams.set("api_key", apiKey());
-  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("language", language);
   return url;
 }
 
@@ -86,19 +86,21 @@ export async function queryTmdb(input: {
   yearTo?: number;
   sort?: "popularity" | "rating";
   window?: "day" | "week";
+  language?: "pt-BR" | "en-US";
 }) {
   const page = input.page ?? 1;
+  const language = input.language ?? "pt-BR";
   let url: URL;
 
   if (input.operation === "search") {
-    url = baseUrl(`/search/${input.media}`);
+    url = baseUrl(`/search/${input.media}`, language);
     url.searchParams.set("query", input.query!);
     url.searchParams.set("include_adult", "false");
     url.searchParams.set("page", String(page));
     return list(url, input.media, page);
   }
   if (input.operation === "discover") {
-    url = baseUrl(`/discover/${input.media}`);
+    url = baseUrl(`/discover/${input.media}`, language);
     url.searchParams.set("include_adult", "false");
     url.searchParams.set("vote_count.gte", "40");
     url.searchParams.set("sort_by", input.sort === "rating" ? "vote_average.desc" : "popularity.desc");
@@ -110,19 +112,19 @@ export async function queryTmdb(input: {
     return list(url, input.media, page);
   }
   if (input.operation === "highlights") {
-    url = baseUrl(`/trending/${input.media}/${input.window ?? "week"}`);
+    url = baseUrl(`/trending/${input.media}/${input.window ?? "week"}`, language);
     url.searchParams.set("page", String(page));
     return list(url, input.media, page);
   }
   if (input.operation === "related") {
-    url = baseUrl(`/${input.media}/${input.id}/recommendations`);
+    url = baseUrl(`/${input.media}/${input.id}/recommendations`, language);
     url.searchParams.set("page", String(page));
     return list(url, input.media, page);
   }
   if (input.operation === "resolve") {
     url = input.imdbId
-      ? baseUrl(`/find/${input.imdbId}`)
-      : baseUrl(`/${input.media}/${input.id}`);
+      ? baseUrl(`/find/${input.imdbId}`, language)
+      : baseUrl(`/${input.media}/${input.id}`, language);
     if (input.imdbId) url.searchParams.set("external_source", "imdb_id");
     else if (input.media === "tv") url.searchParams.set("append_to_response", "external_ids");
     const data = object(await fetchProviderJson(url, { provider: "tmdb", revalidate: 86_400 }));
@@ -136,11 +138,14 @@ export async function queryTmdb(input: {
     return { imdbId: text(input.media === "tv" ? external?.imdb_id : data.imdb_id), tmdbId: Number(input.id), mediaType: input.media, source: "tmdb" as const };
   }
 
-  url = baseUrl(`/${input.media}/${input.id}/${input.operation === "providers" ? "watch/providers" : input.operation}`);
+  url = baseUrl(`/${input.media}/${input.id}/${input.operation === "providers" ? "watch/providers" : input.operation}`, language);
   const data = object(await fetchProviderJson(url, { provider: "tmdb", revalidate: 3_600 }));
   if (!data) throw new ProviderError("invalid_response", `Resposta de ${input.operation} inválida da TMDB.`, "tmdb", 502);
   const field = input.operation === "credits" ? "cast" : "results";
   const valid = input.operation === "providers" ? object(data.results) !== null : Array.isArray(data[field]);
   if (!valid) throw new ProviderError("invalid_response", `Resposta de ${input.operation} inválida da TMDB.`, "tmdb", 502);
+  if (input.operation === "credits") {
+    return { cast: data.cast, crew: Array.isArray(data.crew) ? data.crew : [], source: "tmdb" as const };
+  }
   return { [field]: data[field], source: "tmdb" as const };
 }

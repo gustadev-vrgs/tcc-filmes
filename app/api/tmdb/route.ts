@@ -45,13 +45,18 @@ export async function GET(request: Request) {
     if (window && window !== "day" && window !== "week") {
       throw new ProviderError("invalid_response", "Parâmetro window inválido.", "tmdb", 400);
     }
+    const requestedLanguage = params.get("language");
+    if (requestedLanguage && requestedLanguage !== "pt-BR" && requestedLanguage !== "en-US") {
+      throw new ProviderError("invalid_response", "Parâmetro language inválido.", "tmdb", 400);
+    }
     return NextResponse.json(await queryTmdb({
       operation, media, id, imdbId: imdbId || undefined, query,
       page: pageParam(params.get("page"), "tmdb"), genres: genres || undefined,
       yearFrom: year(params.get("yearFrom"), "yearFrom"),
       yearTo: year(params.get("yearTo"), "yearTo"),
       sort: sort as "popularity" | "rating" | undefined,
-      window: window as "day" | "week" | undefined
+      window: window as "day" | "week" | undefined,
+      language: requestedLanguage as "pt-BR" | "en-US" | undefined
     }));
   } catch (error) {
     if (error instanceof ProviderError) {
