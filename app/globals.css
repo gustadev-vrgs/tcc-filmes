@@ -682,6 +682,27 @@ p {
   line-height: 1.35;
 }
 
+.list-toggle {
+  justify-self: start;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,.04);
+  color: var(--text-secondary);
+  font-size: .76rem;
+  font-weight: 800;
+}
+.list-toggle.saved { border-color: rgba(245,197,66,.5); color: var(--accent-gold); }
+.my-list-view { display: grid; gap: 18px; }
+.privacy-note { margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.storage-warning, .list-notice { margin: 0; border-radius: 14px; padding: 11px 14px; background: rgba(245,197,66,.09); color: var(--accent-gold); }
+.list-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.list-actions button, .legacy-offer button { border: 1px solid var(--border); border-radius: 999px; padding: 9px 13px; background: rgba(255,255,255,.04); color: var(--text-primary); font-weight: 800; }
+.list-actions .danger-button { color: #ffaaa0; border-color: rgba(255,100,90,.25); }
+.legacy-offer { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px; }
+.detail-list-button { margin-top: 18px; }
+.empty-state .gold-button { margin-top: 16px; }
+
 .movie-caption strong {
   color: var(--accent-gold);
   font-size: 0.86rem;

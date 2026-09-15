@@ -12,6 +12,8 @@ export type OmdbSearchItem = {
 
 export type CatalogItem = {
   id: string;
+  ids?: { imdb: string | null; tmdb: number | null };
+  source?: "omdb" | "tmdb";
   title: string;
   year: string;
   type: CatalogKind;
@@ -39,6 +41,8 @@ export type MovieDetails = {
 export function mapOmdbItem(item: OmdbSearchItem): CatalogItem {
   return {
     id: item.imdbID,
+    ids: { imdb: item.imdbID, tmdb: null },
+    source: "omdb",
     title: item.Title,
     year: item.Year,
     type: item.Type === "series" ? "Série" : "Filme",

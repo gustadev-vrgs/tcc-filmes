@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { type CatalogItem, type Language, type MovieDetails } from "../lib/catalog";
-import { getLanguagePreference, saveLanguagePreference } from "../lib/local-storage";
+import { getLanguagePreference, getLegacyFavoriteIds, loadMyList, MAX_LIST_ITEMS, mergeMyLists, MY_LIST_KEY, parseMyListJson, persistMyList, safePosterUrl, saveLanguagePreference, type MyListItem } from "../lib/local-storage";
 import { isCatalogSearchPayload } from "../lib/validation";
 
 type ActiveMode = "search" | "recommend";
@@ -22,6 +22,7 @@ const translations = {
     aiPlaceholder: "Ex.: Quero algo melancólico, visualmente sofisticado, com ritmo contemplativo e final marcante.", suggestionsLabel: "Sugestões de prompts", filtersLabel: "Filtros de resultados", resultsLabel: "Resultados de busca audiovisual", loadingResults: "Carregando resultados",
     openDetails: "Abrir detalhes de", posterOf: "Pôster de", closeDetails: "Fechar detalhes", loadingDetails: "Carregando detalhes...", unableDetails: "Não foi possível abrir os detalhes agora.",
     runtimeUnavailable: "Duração indisponível", ratingUnavailable: "Nota indisponível", plotUnavailable: "Sinopse indisponível.", genre: "Gênero", direction: "Direção / criação", cast: "Elenco", type: "Tipo", unavailable: "Indisponível",
+    addList: "Adicionar à lista", removeList: "Remover da lista", savedHere: "Sua lista fica salva neste navegador", noSync: "Não há sincronização automática. Apagar os dados deste site remove a lista.", clearList: "Limpar lista", clearConfirm: "Remover todos os títulos da sua lista?", exportList: "Exportar JSON", importList: "Importar JSON", listEmpty: "Sua lista está vazia.", searchAction: "Pesquisar títulos", listLoading: "Carregando sua lista...", storageWarning: "O armazenamento está indisponível. Você pode usar a lista temporariamente nesta aba.", invalidImport: "O arquivo não contém uma lista válida.", importDone: "Lista combinada sem duplicações.", legacyOffer: "Encontramos favoritos do protótipo neste navegador.", legacyImport: "Importar favoritos", limitReached: "A lista atingiu o limite de 250 títulos.",
     help: "Pesquise um título ou descreva o que quer assistir. O AskFilm busca resultados reais e mostra filmes ou séries relacionados.", footer: "AskFilm © 2026 — Curadoria audiovisual com IA"
   },
   en: {
@@ -37,6 +38,7 @@ const translations = {
     aiPlaceholder: "E.g.: I want something melancholy, visually sophisticated, contemplative, with a striking ending.", suggestionsLabel: "Prompt suggestions", filtersLabel: "Result filters", resultsLabel: "Audiovisual search results", loadingResults: "Loading results",
     openDetails: "Open details for", posterOf: "Poster for", closeDetails: "Close details", loadingDetails: "Loading details...", unableDetails: "Details are unavailable right now.",
     runtimeUnavailable: "Runtime unavailable", ratingUnavailable: "Rating unavailable", plotUnavailable: "Plot unavailable.", genre: "Genre", direction: "Direction / creation", cast: "Cast", type: "Type", unavailable: "Unavailable",
+    addList: "Add to list", removeList: "Remove from list", savedHere: "Your list is saved in this browser", noSync: "There is no automatic sync. Clearing this site's data removes the list.", clearList: "Clear list", clearConfirm: "Remove every title from your list?", exportList: "Export JSON", importList: "Import JSON", listEmpty: "Your list is empty.", searchAction: "Search titles", listLoading: "Loading your list...", storageWarning: "Storage is unavailable. You can use the list temporarily in this tab.", invalidImport: "This file does not contain a valid list.", importDone: "List merged without duplicates.", legacyOffer: "We found prototype favorites in this browser.", legacyImport: "Import favorites", limitReached: "Your list has reached the 250-title limit.",
     help: "Search for a title or describe what you want to watch. AskFilm finds real results and shows related movies or series.", footer: "AskFilm © 2026 — Audiovisual curation with AI"
   }
 } as const;
@@ -152,8 +154,8 @@ function FilterBar({ activeFilter, labels, onChange }: { activeFilter: FilterKey
   );
 }
 
-function MovieCard({ item, labels, onSelect }: { item: CatalogItem; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void }) {
-  const hasPoster = item.poster && item.poster !== "N/A";
+function MovieCard({ item, labels, onSelect, saved, onToggle }: { item: CatalogItem; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void; saved: boolean; onToggle: (item: CatalogItem) => void }) {
+  const poster = safePosterUrl(item.poster);
 
   return (
     <article className="movie-card" aria-label={`${item.title}, ${translateFilter(item.type, labels)}`}>
@@ -163,18 +165,19 @@ function MovieCard({ item, labels, onSelect }: { item: CatalogItem; labels: (typ
         onClick={() => onSelect(item)}
         aria-label={`${labels.openDetails} ${item.title}`}
       >
-        {hasPoster ? <img src={item.poster} alt={`${labels.posterOf} ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
+        {poster ? <img src={poster} alt={`${labels.posterOf} ${item.title}`} /> : <div className="poster-fallback">AskFilm</div>}
         <span className="type-badge">{translateFilter(item.type, labels).toUpperCase()}</span>
       </button>
       <div className="movie-caption">
         <h3>{item.title}</h3>
         <p>{item.year} • {translateFilter(item.type, labels)}</p>
+        <button type="button" className={`list-toggle ${saved ? "saved" : ""}`} onClick={() => onToggle(item)} aria-pressed={saved}>{saved ? `✓ ${labels.removeList}` : `＋ ${labels.addList}`}</button>
       </div>
     </article>
   );
 }
 
-function ResultsGrid({ isLoading, items, labels, onSelect }: { isLoading: boolean; items: CatalogItem[]; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void }) {
+function ResultsGrid({ isLoading, items, labels, onSelect, isSaved, onToggle }: { isLoading: boolean; items: CatalogItem[]; labels: (typeof translations)[Language]; onSelect: (item: CatalogItem) => void; isSaved: (item: CatalogItem) => boolean; onToggle: (item: CatalogItem) => void }) {
   if (isLoading) {
     return (
       <div className="results-grid" aria-label={labels.loadingResults}>
@@ -191,7 +194,7 @@ function ResultsGrid({ isLoading, items, labels, onSelect }: { isLoading: boolea
   return (
     <div className="results-grid" aria-label={labels.resultsLabel}>
       {items.map((item) => (
-        <MovieCard item={item} key={item.id} labels={labels} onSelect={onSelect} />
+        <MovieCard item={item} key={item.id} labels={labels} onSelect={onSelect} saved={isSaved(item)} onToggle={onToggle} />
       ))}
     </div>
   );
@@ -280,13 +283,15 @@ function DetailsModal({
   isLoading,
   error,
   labels,
-  onClose
+  onClose, saved, onToggle
 }: {
   details: MovieDetails | null;
   isLoading: boolean;
   error: string;
   labels: (typeof translations)[Language];
   onClose: () => void;
+  saved: boolean;
+  onToggle: (details: MovieDetails) => void;
 }) {
   return (
     <div className="details-backdrop" role="presentation" onClick={onClose}>
@@ -325,6 +330,7 @@ function DetailsModal({
                 <div><dt>{labels.cast}</dt><dd>{details.actors ?? labels.unavailable}</dd></div>
                 <div><dt>{labels.type}</dt><dd>{details.mediaType === "series" ? labels.series : labels.movie}</dd></div>
               </dl>
+              <button type="button" className={`gold-button detail-list-button ${saved ? "saved" : ""}`} onClick={() => onToggle(details)} aria-pressed={saved}>{saved ? `✓ ${labels.removeList}` : `＋ ${labels.addList}`}</button>
             </div>
           </div>
         ) : null}
@@ -350,6 +356,12 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [lastSearchQuery, setLastSearchQuery] = useState("");
+  const [showMyList, setShowMyList] = useState(false);
+  const [myList, setMyList] = useState<MyListItem[] | null>(null);
+  const [listNotice, setListNotice] = useState("");
+  const [storageLimited, setStorageLimited] = useState(false);
+  const [legacyIds, setLegacyIds] = useState<string[]>([]);
+  const importRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
   const searchControllerRef = useRef<AbortController | null>(null);
   const detailsControllerRef = useRef<AbortController | null>(null);
@@ -372,6 +384,71 @@ export default function Home() {
       setStatusMessage(translations[savedLanguage].initialStatus);
     }
   }, []);
+
+  useEffect(() => {
+    const loaded = loadMyList();
+    setMyList(loaded.value);
+    setStorageLimited(Boolean(loaded.error));
+    setLegacyIds(getLegacyFavoriteIds());
+    function sync(event: StorageEvent) {
+      if (event.key === MY_LIST_KEY) {
+        const next = loadMyList();
+        setMyList(next.value);
+        setStorageLimited(Boolean(next.error));
+      }
+    }
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+
+  function toListItem(item: CatalogItem | MovieDetails): MyListItem {
+    const detail = "mediaType" in item;
+    const ids = item.ids ?? { imdb: item.id.startsWith("tt") ? item.id : null, tmdb: null };
+    return { id: item.id, ids, source: item.source ?? "omdb", title: item.title, year: (detail ? item.year : item.year) ?? "—", type: detail ? (item.mediaType === "series" ? "Série" : "Filme") : item.type, poster: safePosterUrl(item.poster), addedAt: new Date().toISOString() };
+  }
+
+  function matchesList(item: CatalogItem | MovieDetails) {
+    const candidate = toListItem(item);
+    return (myList ?? []).some((saved) => mergeMyLists([saved], [candidate]).length === 1);
+  }
+
+  function updateList(next: MyListItem[]) {
+    setMyList(next);
+    const error = persistMyList(next);
+    setStorageLimited(Boolean(error));
+    if (error) setListNotice(labels.storageWarning);
+  }
+
+  function toggleList(item: CatalogItem | MovieDetails) {
+    const current = myList ?? [];
+    const candidate = toListItem(item);
+    const existing = current.find((saved) => mergeMyLists([saved], [candidate]).length === 1);
+    if (existing) updateList(current.filter((entry) => entry !== existing));
+    else if (current.length >= MAX_LIST_ITEMS) setListNotice(labels.limitReached);
+    else updateList(mergeMyLists(current, [candidate]));
+  }
+
+  function exportList() {
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: myList ?? [] }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = "askfilmx-minha-lista.json"; anchor.click(); URL.revokeObjectURL(url);
+  }
+
+  async function importList(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    if (file.size > 256 * 1024) { setListNotice(labels.invalidImport); return; }
+    const parsed = parseMyListJson(await file.text());
+    if (parsed.error) { setListNotice(labels.invalidImport); return; }
+    updateList(mergeMyLists(myList ?? [], parsed.value)); setListNotice(labels.importDone);
+  }
+
+  async function importLegacy() {
+    const imported: MyListItem[] = [];
+    for (const id of legacyIds) {
+      try { const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(id)}`); if (!response.ok) continue; imported.push(toListItem(await response.json() as MovieDetails)); } catch {}
+    }
+    updateList(mergeMyLists(myList ?? [], imported)); setLegacyIds([]); setListNotice(labels.importDone);
+  }
 
   function toggleLanguage() {
     const nextLanguage: Language = language === "pt-BR" ? "en" : "pt-BR";
@@ -412,6 +489,8 @@ export default function Home() {
 
       const items = data.items.flatMap((item) => item.ids.imdb ? [{
         id: item.ids.imdb,
+        ids: item.ids,
+        source: item.source,
         title: item.title,
         year: item.year ?? "—",
         type: item.mediaType === "series" ? "Série" as const : "Filme" as const,
@@ -469,7 +548,16 @@ export default function Home() {
     setSelectedDetails(null);
 
     try {
-      const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(item.id)}`, { signal: controller.signal });
+      let imdbId = item.ids?.imdb ?? (item.id.startsWith("tt") ? item.id : null);
+      if (!imdbId && item.ids?.tmdb) {
+        const media = item.type === "Série" ? "tv" : "movie";
+        const resolved = await fetch(`/api/tmdb?operation=resolve&media=${media}&id=${item.ids.tmdb}`, { signal: controller.signal });
+        const identifiers = await resolved.json();
+        if (!resolved.ok || typeof identifiers.imdbId !== "string") throw new Error(labels.unableDetails);
+        imdbId = identifiers.imdbId;
+      }
+      if (!imdbId) throw new Error(labels.unableDetails);
+      const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(imdbId)}`, { signal: controller.signal });
       const data = await response.json();
 
       if (sequence !== detailsSequenceRef.current) return;
@@ -538,9 +626,9 @@ export default function Home() {
           <span className="brand-name">AskFilm</span>
         </a>
         <nav className="main-nav" aria-label="Seções do AskFilm">
-          <button type="button" onClick={() => setActiveMode("search")}>{labels.search}</button>
+          <button type="button" onClick={() => { setShowMyList(false); setActiveMode("search"); }}>{labels.search}</button>
           <button type="button" onClick={() => setActiveMode("recommend")}>{labels.aiRecommendation}</button>
-          <a href="#results">{labels.myList}</a>
+          <button type="button" onClick={() => { setShowMyList(true); scrollToResults(); }}>{labels.myList}{myList?.length ? ` (${myList.length})` : ""}</button>
           <a href="#about-help">{labels.about}</a>
           <button type="button" className="language-toggle" onClick={toggleLanguage} aria-label="PT-BR / EN">
             {language === "pt-BR" ? "PT-BR" : "EN"}
@@ -612,22 +700,39 @@ export default function Home() {
       <section className="results-section" id="results" aria-labelledby="results-title" ref={resultsRef}>
         <div className="results-heading">
           <div>
-            <p className="eyebrow">{labels.results}</p>
-            <h2 id="results-title">{labels.yourCuration}</h2>
+            <p className="eyebrow">{showMyList ? labels.myList : labels.results}</p>
+            <h2 id="results-title">{showMyList ? labels.myList : labels.yourCuration}</h2>
           </div>
-          <div className="status-badge" aria-live="polite">{statusMessage}</div>
+          <div className="status-badge" aria-live="polite">{showMyList ? labels.savedHere : statusMessage}</div>
         </div>
+        {showMyList ? (
+          <div className="my-list-view">
+            <p className="privacy-note">{labels.noSync}</p>
+            {storageLimited && <p className="storage-warning" role="status">{labels.storageWarning}</p>}
+            {listNotice && <p className="list-notice" role="status">{listNotice}</p>}
+            {legacyIds.length > 0 && <div className="legacy-offer"><span>{labels.legacyOffer}</span><button type="button" onClick={() => void importLegacy()}>{labels.legacyImport}</button></div>}
+            <div className="list-actions">
+              <button type="button" onClick={exportList} disabled={!myList?.length}>{labels.exportList}</button>
+              <button type="button" onClick={() => importRef.current?.click()}>{labels.importList}</button>
+              <input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importList(event)} />
+              <button type="button" className="danger-button" disabled={!myList?.length} onClick={() => { if (window.confirm(labels.clearConfirm)) updateList([]); }}>{labels.clearList}</button>
+            </div>
+            {myList === null ? <div className="empty-state"><p>{labels.listLoading}</p></div> : myList.length ? (
+              <ResultsGrid isLoading={false} items={myList.map((item) => ({ ...item, poster: item.poster ?? "N/A" }))} labels={labels} onSelect={handleSelectMovie} isSaved={matchesList} onToggle={toggleList} />
+            ) : <div className="empty-state"><p>{labels.listEmpty}</p><button type="button" className="gold-button" onClick={() => { setShowMyList(false); setActiveMode("search"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{labels.searchAction}</button></div>}
+          </div>
+        ) : <>
         {(visibleItems.length > 0 || lastSearchQuery) && <FilterBar activeFilter={activeFilter} labels={labels} onChange={handleFilterChange} />}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
           <>
-            <ResultsGrid isLoading={isLoading} items={visibleItems} labels={labels} onSelect={handleSelectMovie} />
+            <ResultsGrid isLoading={isLoading} items={visibleItems} labels={labels} onSelect={handleSelectMovie} isSaved={matchesList} onToggle={toggleList} />
             <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} labels={labels} onPageChange={handlePageChange} />
           </>
         ) : (
           <div className="empty-state">
             <p>{labels.emptyState}</p>
           </div>
-        )}
+        )}</>}
       </section>
 
       {(isDetailsLoading || selectedDetails || detailsError) && (
@@ -637,6 +742,8 @@ export default function Home() {
           error={detailsError}
           labels={labels}
           onClose={closeDetails}
+          saved={selectedDetails ? matchesList(selectedDetails) : false}
+          onToggle={toggleList}
         />
       )}
 
