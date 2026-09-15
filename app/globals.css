@@ -218,6 +218,11 @@ p {
   line-height: 1.65;
 }
 
+.recommendation-reason { color: var(--text-secondary); font-size: .86rem; line-height: 1.45; }
+.recommendation-limitations { margin: 0 0 20px; padding: 12px 18px; border-left: 3px solid var(--accent-gold); color: var(--text-secondary); }
+.recommendation-limitations ul { margin: 0; padding-left: 18px; }
+.broaden-button { display: block; margin: 24px auto 0; padding: 11px 18px; border: 1px solid var(--accent-gold); border-radius: 999px; color: var(--accent-gold); background: transparent; cursor: pointer; }
+
 .interaction-panel {
   border: 1px solid var(--border);
   border-radius: 30px;

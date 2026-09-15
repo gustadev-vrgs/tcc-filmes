@@ -16,7 +16,7 @@ export type AiInput = {
 };
 
 export type AiResult =
-  | { operation: "interpret_request"; intent: string; genres: string[]; moods: string[]; constraints: string[] }
+  | { operation: "interpret_request"; criteria: unknown }
   | { operation: "justify"; justification: string }
   | { operation: "summarize"; summary: string }
   | { operation: "chat"; answer: string };
@@ -37,14 +37,20 @@ const limits: Record<AiOperation, { text: number; context: number; output: numbe
 };
 
 const schemas: Record<AiOperation, object> = {
-  interpret_request: { type: "object", additionalProperties: false, properties: { intent: { type: "string" }, genres: { type: "array", items: { type: "string" }, maxItems: 8 }, moods: { type: "array", items: { type: "string" }, maxItems: 8 }, constraints: { type: "array", items: { type: "string" }, maxItems: 8 } }, required: ["intent", "genres", "moods", "constraints"] },
+  interpret_request: { type: "object", additionalProperties: false, properties: { criteria: { type: "object", additionalProperties: false, properties: {
+    version: { type: "integer", enum: [1] }, mediaType: { type: "string", enum: ["movie", "tv", "any"] },
+    required: { type: "object", additionalProperties: false, properties: { genres: { type: "array", items: { type: "string", enum: ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy", "History", "Horror", "Kids", "Music", "Mystery", "Romance", "Science Fiction", "Sci-Fi & Fantasy", "Thriller", "War", "War & Politics", "Western"] }, maxItems: 5 }, yearFrom: { type: ["integer", "null"] }, yearTo: { type: ["integer", "null"] } }, required: ["genres", "yearFrom", "yearTo"] },
+    preferences: { type: "object", additionalProperties: false, properties: { sort: { type: "string", enum: ["popularity", "rating"] } }, required: ["sort"] },
+    similarTo: { anyOf: [{ type: "null" }, { type: "object", additionalProperties: false, properties: { title: { type: "string" }, year: { type: ["integer", "null"] }, mediaType: { type: ["string", "null"], enum: ["movie", "tv", null] }, imdbId: { type: ["string", "null"] }, tmdbId: { type: ["integer", "null"] } }, required: ["title", "year", "mediaType", "imdbId", "tmdbId"] }] },
+    requestedCount: { type: "integer", minimum: 1, maximum: 10 }, clarification: { type: ["string", "null"] }, limitations: { type: "array", items: { type: "string" }, maxItems: 5 }
+  }, required: ["version", "mediaType", "required", "preferences", "similarTo", "requestedCount", "clarification", "limitations"] } }, required: ["criteria"] },
   justify: { type: "object", additionalProperties: false, properties: { justification: { type: "string" } }, required: ["justification"] },
   summarize: { type: "object", additionalProperties: false, properties: { summary: { type: "string" } }, required: ["summary"] },
   chat: { type: "object", additionalProperties: false, properties: { answer: { type: "string" } }, required: ["answer"] }
 };
 
 const prompts: Record<AiOperation, string> = {
-  interpret_request: "Interprete o pedido audiovisual sem inventar títulos. Extraia intenção, gêneros, humores e restrições.",
+  interpret_request: "Converta o pedido em critérios verificáveis de catálogo. Preserve títulos exatamente, inclusive números como 1917, 2001: A Space Odyssey e 12 Angry Men. Separe restrições obrigatórias (tipo, gêneros e período) da preferência de ordenação. Em pedidos por semelhança, mantenha também todas as restrições adicionais. Só use os gêneros enumerados. Não represente humor, tom, país, idioma, disponibilidade ou atributos subjetivos como atendidos: registre a limitação em limitations. Se faltar somente um dado necessário para resolver ambiguidade, coloque uma pergunta curta em clarification. Nunca invente título ou identificador. Use requestedCount 6 quando não informado.",
   justify: "Explique de forma breve por que o título fornecido combina com o pedido. Não invente fatos ausentes do contexto.",
   summarize: "Resuma o texto audiovisual com neutralidade, sem acrescentar fatos e sem spoilers além dos já presentes.",
   chat: "Converse somente sobre filmes e séries. Seja conciso, deixe incertezas explícitas e não afirme ter assistido a obras."
@@ -82,7 +88,7 @@ function validResult(operation: AiOperation, value: unknown): value is AiResult 
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const result = value as Record<string, unknown>;
   const onlyStrings = (key: string) => Array.isArray(result[key]) && (result[key] as unknown[]).length <= 8 && (result[key] as unknown[]).every((entry) => typeof entry === "string" && entry.length <= 120);
-  if (operation === "interpret_request") return typeof result.intent === "string" && result.intent.length <= 500 && onlyStrings("genres") && onlyStrings("moods") && onlyStrings("constraints");
+  if (operation === "interpret_request") return result.criteria !== null && typeof result.criteria === "object" && !Array.isArray(result.criteria);
   const key = operation === "justify" ? "justification" : operation === "summarize" ? "summary" : "answer";
   return typeof result[key] === "string" && (result[key] as string).length > 0 && (result[key] as string).length <= 3_000;
 }

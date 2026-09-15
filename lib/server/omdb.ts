@@ -14,6 +14,10 @@ export type NormalizedTitle = {
   plot: string | null;
   source: "omdb" | "tmdb";
   partial: boolean;
+  genreIds?: number[];
+  popularity?: number;
+  rating?: number;
+  votes?: number;
 };
 
 function record(value: unknown): ObjectValue | null {

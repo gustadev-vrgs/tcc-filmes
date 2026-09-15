@@ -48,7 +48,11 @@ function normalize(item: Data, media: TmdbMediaType): NormalizedTitle {
     poster: posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : null,
     plot: text(item.overview),
     source: "tmdb",
-    partial: !posterPath || !text(item.overview)
+    partial: !posterPath || !text(item.overview),
+    genreIds: Array.isArray(item.genre_ids) ? item.genre_ids.filter((id): id is number => typeof id === "number" && Number.isInteger(id)) : [],
+    popularity: number(item.popularity) ?? undefined,
+    rating: number(item.vote_average) ?? undefined,
+    votes: number(item.vote_count) ?? undefined
   };
 }
 
