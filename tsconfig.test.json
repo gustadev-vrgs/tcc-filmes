@@ -9,6 +9,6 @@
     "outDir": ".test-build",
     "incremental": false
   },
-  "include": ["lib/server/**/*.ts", "tests/**/*.ts"],
+  "include": ["lib/server/**/*.ts", "lib/local-storage.ts", "lib/catalog.ts", "tests/**/*.ts"],
   "exclude": ["node_modules"]
 }
