@@ -8,6 +8,8 @@ import { isRecommendationResponse } from "../lib/recommendation";
 
 type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série";
+type ChatMessage = { role: "user" | "assistant"; content: string };
+type SummaryState = { text: string; engine: string; model: string; promptVersion: string };
 
 const translations = {
   "pt-BR": {
@@ -24,6 +26,7 @@ const translations = {
     openDetails: "Abrir detalhes de", posterOf: "Pôster de", closeDetails: "Fechar detalhes", loadingDetails: "Carregando detalhes...", unableDetails: "Não foi possível abrir os detalhes agora.",
     runtimeUnavailable: "Duração indisponível", ratingUnavailable: "Nota indisponível", plotUnavailable: "Sinopse indisponível.", genre: "Gênero", direction: "Direção / criação", cast: "Elenco", type: "Tipo", unavailable: "Indisponível",
     addList: "Adicionar à lista", removeList: "Remover da lista", savedHere: "Sua lista fica salva neste navegador", noSync: "Não há sincronização automática. Apagar os dados deste site remove a lista.", clearList: "Limpar lista", clearConfirm: "Remover todos os títulos da sua lista?", exportList: "Exportar JSON", importList: "Importar JSON", listEmpty: "Sua lista está vazia.", searchAction: "Pesquisar títulos", listLoading: "Carregando sua lista...", storageWarning: "O armazenamento está indisponível. Você pode usar a lista temporariamente nesta aba.", invalidImport: "O arquivo não contém uma lista válida.", importDone: "Lista combinada sem duplicações.", legacyOffer: "Encontramos favoritos do protótipo neste navegador.", legacyImport: "Importar favoritos", limitReached: "A lista atingiu o limite de 250 títulos.",
+    aiTitle: "AskFilmX sobre este título", aiSummary: "Resumo curto", generateSummary: "Gerar resumo", retry: "Tentar novamente", aiGenerated: "Gerado por IA", engine: "Mecanismo", openAiEngine: "OpenAI · gpt-4.1-mini (nuvem)", paidNotice: "Este mecanismo pode gerar cobrança. Ele só é usado quando você pedir.", chatTitle: "Converse sobre o título", chatPlaceholder: "Pergunte sobre este título…", send: "Enviar", temporaryChat: "Conversa temporária: será apagada ao recarregar.", newChat: "Nova conversa", noPlotAi: "Sem sinopse suficiente para um resumo confiável.", aiError: "Não foi possível obter uma resposta.",
     help: "Pesquise um título ou descreva o que quer assistir. O AskFilm busca resultados reais e mostra filmes ou séries relacionados.", footer: "AskFilm © 2026 — Curadoria audiovisual com IA"
   },
   en: {
@@ -40,6 +43,7 @@ const translations = {
     openDetails: "Open details for", posterOf: "Poster for", closeDetails: "Close details", loadingDetails: "Loading details...", unableDetails: "Details are unavailable right now.",
     runtimeUnavailable: "Runtime unavailable", ratingUnavailable: "Rating unavailable", plotUnavailable: "Plot unavailable.", genre: "Genre", direction: "Direction / creation", cast: "Cast", type: "Type", unavailable: "Unavailable",
     addList: "Add to list", removeList: "Remove from list", savedHere: "Your list is saved in this browser", noSync: "There is no automatic sync. Clearing this site's data removes the list.", clearList: "Clear list", clearConfirm: "Remove every title from your list?", exportList: "Export JSON", importList: "Import JSON", listEmpty: "Your list is empty.", searchAction: "Search titles", listLoading: "Loading your list...", storageWarning: "Storage is unavailable. You can use the list temporarily in this tab.", invalidImport: "This file does not contain a valid list.", importDone: "List merged without duplicates.", legacyOffer: "We found prototype favorites in this browser.", legacyImport: "Import favorites", limitReached: "Your list has reached the 250-title limit.",
+    aiTitle: "AskFilmX for this title", aiSummary: "Short summary", generateSummary: "Generate summary", retry: "Try again", aiGenerated: "AI-generated", engine: "Engine", openAiEngine: "OpenAI · gpt-4.1-mini (cloud)", paidNotice: "This engine may incur charges. It is used only when you request it.", chatTitle: "Discuss this title", chatPlaceholder: "Ask about this title…", send: "Send", temporaryChat: "Temporary chat: it will be erased when you reload.", newChat: "New conversation", noPlotAi: "Not enough plot information for a reliable summary.", aiError: "A response could not be obtained.",
     help: "Search for a title or describe what you want to watch. AskFilm finds real results and shows related movies or series.", footer: "AskFilm © 2026 — Audiovisual curation with AI"
   }
 } as const;
@@ -285,7 +289,7 @@ function DetailsModal({
   isLoading,
   error,
   labels,
-  onClose, saved, onToggle
+  onClose, saved, onToggle, summary, aiLoading, aiError, chat, question, onQuestionChange, onSummary, onChat, onNewChat, onRetry
 }: {
   details: MovieDetails | null;
   isLoading: boolean;
@@ -294,6 +298,16 @@ function DetailsModal({
   onClose: () => void;
   saved: boolean;
   onToggle: (details: MovieDetails) => void;
+  summary: SummaryState | null;
+  aiLoading: "summary" | "chat" | null;
+  aiError: string;
+  chat: ChatMessage[];
+  question: string;
+  onQuestionChange: (value: string) => void;
+  onSummary: () => void;
+  onChat: (event: FormEvent<HTMLFormElement>) => void;
+  onNewChat: () => void;
+  onRetry: () => void;
 }) {
   return (
     <div className="details-backdrop" role="presentation" onClick={onClose}>
@@ -333,6 +347,25 @@ function DetailsModal({
                 <div><dt>{labels.type}</dt><dd>{details.mediaType === "series" ? labels.series : labels.movie}</dd></div>
               </dl>
               <button type="button" className={`gold-button detail-list-button ${saved ? "saved" : ""}`} onClick={() => onToggle(details)} aria-pressed={saved}>{saved ? `✓ ${labels.removeList}` : `＋ ${labels.addList}`}</button>
+              <section className="title-ai" aria-labelledby="title-ai-heading">
+                <div className="title-ai-heading">
+                  <div><span className="details-kicker">{labels.aiGenerated}</span><h3 id="title-ai-heading">{labels.aiTitle}</h3></div>
+                  <label>{labels.engine}<select value="openai" disabled aria-label={labels.engine}><option value="openai">{labels.openAiEngine}</option></select></label>
+                </div>
+                <p className="ai-cost-note">{labels.paidNotice}</p>
+                <div className="ai-summary">
+                  <strong>{labels.aiSummary}</strong>
+                  {summary ? <><p>{summary.text}</p><small>{labels.aiGenerated} · {summary.engine} / {summary.model}</small></> : <p>{details.plot ? "—" : labels.noPlotAi}</p>}
+                  <button type="button" onClick={onSummary} disabled={aiLoading !== null || !details.plot}>{aiError && !summary ? labels.retry : labels.generateSummary}</button>
+                </div>
+                <div className="title-chat">
+                  <div className="chat-bar"><strong>{labels.chatTitle}</strong><button type="button" onClick={onNewChat} disabled={aiLoading !== null}>{labels.newChat}</button></div>
+                  <p className="temporary-note">{labels.temporaryChat}</p>
+                  {chat.length > 0 && <div className="chat-log" role="log" aria-live="polite">{chat.map((message, index) => <p key={index} className={message.role}><b>{message.role === "user" ? "Você" : "AskFilmX"}:</b> {message.content}</p>)}</div>}
+                  <form onSubmit={onChat} className="chat-form"><label className="sr-only" htmlFor="title-question">{labels.chatPlaceholder}</label><input id="title-question" value={question} maxLength={1500} onChange={(event) => onQuestionChange(event.target.value)} placeholder={labels.chatPlaceholder} /><button type="submit" disabled={aiLoading !== null || !question.trim()}>{aiLoading === "chat" ? "…" : labels.send}</button></form>
+                </div>
+                {aiError && <div className="ai-error" role="alert">{aiError} <button type="button" disabled={aiLoading !== null} onClick={onRetry}>{labels.retry}</button></div>}
+              </section>
             </div>
           </div>
         ) : null}
@@ -355,6 +388,11 @@ export default function Home() {
   const [selectedDetails, setSelectedDetails] = useState<MovieDetails | null>(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [summary, setSummary] = useState<SummaryState | null>(null);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [question, setQuestion] = useState("");
+  const [aiLoading, setAiLoading] = useState<"summary" | "chat" | null>(null);
+  const [titleAiError, setTitleAiError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [lastSearchQuery, setLastSearchQuery] = useState("");
@@ -371,6 +409,10 @@ export default function Home() {
   const detailsControllerRef = useRef<AbortController | null>(null);
   const searchSequenceRef = useRef(0);
   const detailsSequenceRef = useRef(0);
+  const titleAiControllerRef = useRef<AbortController | null>(null);
+  const titleAiSequenceRef = useRef(0);
+  const titleAiInFlightRef = useRef(false);
+  const summaryCacheRef = useRef(new Map<string, SummaryState>());
   const recommendationInFlightRef = useRef<number | null>(null);
   const labels = translations[language];
 
@@ -460,6 +502,11 @@ export default function Home() {
     setLanguage(nextLanguage);
     saveLanguagePreference(nextLanguage);
     setStatusMessage(translations[nextLanguage].initialStatus);
+    titleAiControllerRef.current?.abort();
+    titleAiSequenceRef.current += 1;
+    titleAiInFlightRef.current = false; setAiLoading(null); setTitleAiError(""); setChat([]); setQuestion("");
+    const id = selectedDetails?.ids.imdb;
+    setSummary(id ? summaryCacheRef.current.get(`${id}|${nextLanguage}|openai|gpt-4.1-mini|title-context-v1`) ?? null : null);
   }
 
   function scrollToResults() {
@@ -547,6 +594,8 @@ export default function Home() {
   }
 
   async function handleSelectMovie(item: CatalogItem) {
+    titleAiControllerRef.current?.abort(); titleAiSequenceRef.current += 1;
+    titleAiInFlightRef.current = false; setSummary(null); setChat([]); setQuestion(""); setAiLoading(null); setTitleAiError("");
     detailsControllerRef.current?.abort();
     const controller = new AbortController();
     detailsControllerRef.current = controller;
@@ -574,7 +623,9 @@ export default function Home() {
         throw new Error(data.error ?? labels.unableDetails);
       }
 
-      setSelectedDetails(data as MovieDetails);
+      const nextDetails = data as MovieDetails;
+      setSelectedDetails(nextDetails);
+      if (nextDetails.ids.imdb) setSummary(summaryCacheRef.current.get(`${nextDetails.ids.imdb}|${language}|openai|gpt-4.1-mini|title-context-v1`) ?? null);
     } catch (error) {
       if (controller.signal.aborted || sequence !== detailsSequenceRef.current) return;
       setDetailsError(error instanceof Error ? error.message : labels.unableDetails);
@@ -589,7 +640,40 @@ export default function Home() {
     setSelectedDetails(null);
     setDetailsError("");
     setIsDetailsLoading(false);
+    titleAiControllerRef.current?.abort(); titleAiSequenceRef.current += 1; titleAiInFlightRef.current = false; setAiLoading(null);
   }
+
+  async function callTitleAi(action: "summary" | "chat", text?: string) {
+    const imdbId = selectedDetails?.ids.imdb;
+    if (!imdbId || titleAiInFlightRef.current) return;
+    titleAiInFlightRef.current = true;
+    const controller = new AbortController(); titleAiControllerRef.current?.abort(); titleAiControllerRef.current = controller;
+    const sequence = ++titleAiSequenceRef.current;
+    setAiLoading(action); setTitleAiError("");
+    const sentHistory = chat.slice(-8);
+    try {
+      const response = await fetch("/api/title-ai", { method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, imdbId, language, engine: "openai", question: text, history: action === "chat" ? sentHistory : undefined }) });
+      const data = await response.json();
+      if (sequence !== titleAiSequenceRef.current || controller.signal.aborted || selectedDetails?.ids.imdb !== imdbId) return;
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : labels.aiError);
+      if (action === "summary" && typeof data.summary === "string") {
+        const value = { text: data.summary, engine: data.engine, model: data.model, promptVersion: data.promptVersion };
+        const key = `${imdbId}|${language}|${data.engine}|${data.model}|${data.promptVersion}`;
+        summaryCacheRef.current.set(key, value);
+        while (summaryCacheRef.current.size > 12) summaryCacheRef.current.delete(summaryCacheRef.current.keys().next().value!);
+        setSummary(value);
+      } else if (action === "chat" && typeof data.answer === "string" && text) {
+        const answer = data.answer as string;
+        setChat((current) => [...current, { role: "user" as const, content: text }, { role: "assistant" as const, content: answer }].slice(-10));
+        setQuestion("");
+      } else throw new Error(labels.aiError);
+    } catch (error) {
+      if (!controller.signal.aborted && sequence === titleAiSequenceRef.current) setTitleAiError(error instanceof Error ? error.message : labels.aiError);
+    } finally { if (sequence === titleAiSequenceRef.current) { titleAiInFlightRef.current = false; setAiLoading(null); } }
+  }
+
+  function askTitle(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const text = question.trim(); if (text) void callTitleAi("chat", text); }
+  function newChat() { titleAiControllerRef.current?.abort(); titleAiSequenceRef.current += 1; titleAiInFlightRef.current = false; setChat([]); setQuestion(""); setTitleAiError(""); setAiLoading(null); }
 
   async function requestRecommendation(broaden = false) {
     const prompt = recommendationPrompt.trim();
@@ -774,6 +858,16 @@ export default function Home() {
           onClose={closeDetails}
           saved={selectedDetails ? matchesList(selectedDetails) : false}
           onToggle={toggleList}
+          summary={summary}
+          aiLoading={aiLoading}
+          aiError={titleAiError}
+          chat={chat}
+          question={question}
+          onQuestionChange={setQuestion}
+          onSummary={() => void callTitleAi("summary")}
+          onChat={askTitle}
+          onNewChat={newChat}
+          onRetry={() => question.trim() ? void callTitleAi("chat", question.trim()) : void callTitleAi("summary")}
         />
       )}
 
