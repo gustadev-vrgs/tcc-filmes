@@ -1,5 +1,5 @@
 import type { Language } from "../catalog";
-import { MOVIE_GENRES, TV_GENRES, type RecommendationCriteria, type RecommendationResponse } from "../recommendation";
+import { isRecommendationCriteria, MOVIE_GENRES, TV_GENRES, type RecommendationCriteria, type RecommendationResponse } from "../recommendation";
 import { AiError, runAi } from "./ai";
 import { ProviderError } from "./provider-error";
 import { queryTmdb } from "./tmdb";
@@ -7,21 +7,9 @@ import { queryTmdb } from "./tmdb";
 type Candidate = { id: string; ids: { imdb: string | null; tmdb: number | null }; mediaType: "movie" | "series"; title: string; year: string | null; poster: string | null; plot: string | null; source: "tmdb"; partial: boolean; genreIds?: number[]; popularity?: number; rating?: number; votes?: number };
 type Dependencies = { ai?: typeof runAi; tmdb?: typeof queryTmdb };
 
-const allGenres = new Set([...Object.keys(MOVIE_GENRES), ...Object.keys(TV_GENRES)]);
-
 export function validateCriteria(value: unknown): RecommendationCriteria {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AiError("invalid_response", "A IA retornou critérios inválidos; a busca não foi executada.", 502);
-  const v = value as Record<string, unknown>; const required = v.required as Record<string, unknown> | null; const preferences = v.preferences as Record<string, unknown> | null;
-  const similar = v.similarTo as Record<string, unknown> | null;
-  const genres = required?.genres;
-  const validYear = (year: unknown) => year === null || (Number.isInteger(year) && Number(year) >= 1900 && Number(year) <= 2100);
-  if (v.version !== 1 || !["movie", "tv", "any"].includes(String(v.mediaType)) || !required || !Array.isArray(genres) || genres.length > 5 || !genres.every((g) => typeof g === "string" && allGenres.has(g)) ||
-      !validYear(required.yearFrom) || !validYear(required.yearTo) || (required.yearFrom && required.yearTo && Number(required.yearFrom) > Number(required.yearTo)) || !preferences || !["popularity", "rating"].includes(String(preferences.sort)) ||
-      !Number.isInteger(v.requestedCount) || Number(v.requestedCount) < 1 || Number(v.requestedCount) > 10 || (v.clarification !== null && typeof v.clarification !== "string") || !Array.isArray(v.limitations) || !v.limitations.every((x) => typeof x === "string") ||
-      (similar !== null && (!similar || typeof similar.title !== "string" || !similar.title.trim() || !validYear(similar.year) || ![null, "movie", "tv"].includes(similar.mediaType as null | string) || (similar.imdbId !== null && (typeof similar.imdbId !== "string" || !/^tt\d{5,12}$/.test(similar.imdbId))) || (similar.tmdbId !== null && (!Number.isInteger(similar.tmdbId) || Number(similar.tmdbId) <= 0))))) {
-    throw new AiError("invalid_response", "A IA retornou critérios inválidos; a busca não foi executada.", 502);
-  }
-  return value as RecommendationCriteria;
+  if (!isRecommendationCriteria(value)) throw new AiError("invalid_response", "A IA retornou critérios inválidos; a busca não foi executada.", 502);
+  return value;
 }
 
 function genreIds(criteria: RecommendationCriteria, media: "movie" | "tv") {
@@ -47,10 +35,15 @@ function reason(candidate: Candidate, criteria: RecommendationCriteria, related:
 }
 
 export async function recommend(text: string, language: Language, deps: Dependencies = {}, broaden = false): Promise<RecommendationResponse> {
-  const ai = deps.ai ?? runAi; const tmdb = deps.tmdb ?? queryTmdb;
+  const ai = deps.ai ?? runAi;
   const interpreted = await ai({ operation: "interpret_request", text, language });
   if (interpreted.operation !== "interpret_request") throw new AiError("invalid_response", "A IA retornou uma operação inesperada.", 502);
   const interpretedCriteria = validateCriteria(interpreted.criteria);
+  return recommendFromCriteria(interpretedCriteria, language, deps, broaden);
+}
+
+export async function recommendFromCriteria(interpretedCriteria: RecommendationCriteria, language: Language, deps: Dependencies = {}, broaden = false): Promise<RecommendationResponse> {
+  const tmdb = deps.tmdb ?? queryTmdb;
   const criteria = broaden ? { ...interpretedCriteria, required: { genres: [], yearFrom: null, yearTo: null }, limitations: [...interpretedCriteria.limitations, language === "en" ? "Required genre and period filters were removed after your explicit action." : "Filtros obrigatórios de gênero e período foram removidos após sua ação explícita."] } : interpretedCriteria;
   if (criteria.clarification) return { criteria, items: [], message: criteria.clarification, canBroaden: false, partialFailures: 0, limitations: criteria.limitations };
 
