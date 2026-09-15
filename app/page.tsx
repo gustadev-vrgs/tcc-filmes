@@ -1,43 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { mapOmdbItem, type CatalogItem, type Language, type MovieDetails } from "../lib/catalog";
+import { getLanguagePreference, saveLanguagePreference } from "../lib/local-storage";
+import { isOmdbSearchPayload } from "../lib/validation";
 
 type ActiveMode = "search" | "recommend";
-type Language = "pt-BR" | "en";
 type FilterKey = "Todos" | "Filme" | "Série" | "Anime" | "Doc";
-
-type SearchItem = {
-  Title: string;
-  Year: string;
-  imdbID: string;
-  Type: string;
-  Poster: string;
-};
-
-type CatalogItem = {
-  id: string;
-  title: string;
-  year: string;
-  type: Exclude<FilterKey, "Todos">;
-  poster: string;
-};
-
-type OmdbSearchPayload = {
-  Search: SearchItem[];
-  totalResults: string;
-};
-
-type MovieDetails = SearchItem & {
-  Rated?: string;
-  Released?: string;
-  Runtime?: string;
-  Genre?: string;
-  Director?: string;
-  Writer?: string;
-  Actors?: string;
-  Plot?: string;
-  imdbRating?: string;
-};
 
 const translations = {
   "pt-BR": {
@@ -81,24 +50,6 @@ const suggestionChips: Record<Language, string[]> = {
   en: ["Dark psychological anime", "Nordic thriller like True Detective", "Family tearjerker movie", "90s British comedy"]
 };
 const filterOptions: FilterKey[] = ["Todos", "Filme", "Série"];
-
-function mapItemType(type: string): CatalogItem["type"] {
-  if (type === "series") {
-    return "Série";
-  }
-
-  return "Filme";
-}
-
-function mapSearchItem(item: SearchItem): CatalogItem {
-  return {
-    id: item.imdbID,
-    title: item.Title,
-    year: item.Year,
-    type: mapItemType(item.Type),
-    poster: item.Poster
-  };
-}
 
 function SearchBar({
   isLoading,
@@ -411,8 +362,8 @@ export default function Home() {
   }, [language]);
 
   useEffect(() => {
-    const savedLanguage = window.localStorage.getItem("askfilm-language");
-    if (savedLanguage === "pt-BR" || savedLanguage === "en") {
+    const savedLanguage = getLanguagePreference();
+    if (savedLanguage) {
       setLanguage(savedLanguage);
       setStatusMessage(translations[savedLanguage].initialStatus);
     }
@@ -421,7 +372,7 @@ export default function Home() {
   function toggleLanguage() {
     const nextLanguage: Language = language === "pt-BR" ? "en" : "pt-BR";
     setLanguage(nextLanguage);
-    window.localStorage.setItem("askfilm-language", nextLanguage);
+    saveLanguagePreference(nextLanguage);
     setStatusMessage(translations[nextLanguage].initialStatus);
   }
 
@@ -446,9 +397,12 @@ export default function Home() {
         throw new Error(data.error ?? labels.unableSearch);
       }
 
-      const payload = data as OmdbSearchPayload;
-      const items = payload.Search.map(mapSearchItem);
-      const totalResults = Number(payload.totalResults);
+      if (!isOmdbSearchPayload(data)) {
+        throw new Error(labels.unableSearch);
+      }
+
+      const items = data.Search.map(mapOmdbItem);
+      const totalResults = Number(data.totalResults);
       const nextTotalPages = Number.isFinite(totalResults) ? Math.ceil(totalResults / 10) : 0;
 
       setVisibleItems(items);
