@@ -11,6 +11,11 @@ type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type SummaryState = { text: string; engine: string; model: string; promptVersion: string };
+type Credit = { id: number; name: string; character?: string; job?: string; profile_path?: string | null };
+type Video = { key: string; site: string; type: string; official?: boolean; name: string };
+type Provider = { provider_id: number; provider_name: string; logo_path?: string | null };
+type Extras = { tmdbId: number | null; cast: Credit[]; crew: Credit[]; videos: Video[]; providers: { link?: string; flatrate?: Provider[]; rent?: Provider[]; buy?: Provider[] } | null; related: CatalogItem[]; loading: boolean; partial: boolean };
+const emptyExtras: Extras = { tmdbId: null, cast: [], crew: [], videos: [], providers: null, related: [], loading: false, partial: false };
 
 const translations = {
   "pt-BR": {
@@ -290,7 +295,8 @@ function DetailsModal({
   isLoading,
   error,
   labels,
-  onClose, saved, onToggle, summary, aiLoading, aiError, chat, question, engineLabel, onQuestionChange, onSummary, onChat, onNewChat, onRetry
+  onClose, saved, onToggle, summary, aiLoading, aiError, chat, question, engineLabel, onQuestionChange, onSummary, onChat, onNewChat, onRetry,
+  extras, region, language, onRegionChange, onSelectRelated
 }: {
   details: MovieDetails | null;
   isLoading: boolean;
@@ -310,10 +316,47 @@ function DetailsModal({
   onChat: (event: FormEvent<HTMLFormElement>) => void;
   onNewChat: () => void;
   onRetry: () => void;
+  extras: Extras;
+  region: string;
+  language: Language;
+  onRegionChange: (region: string) => void;
+  onSelectRelated: (item: CatalogItem) => void;
 }) {
+  const modalRef = useRef<HTMLElement | null>(null);
+  const [videoKey, setVideoKey] = useState<string | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const modal = modalRef.current;
+    modal?.querySelector<HTMLElement>("button")?.focus();
+    function keydown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+      if (event.key !== "Tab" || !modal) return;
+      const nodes = Array.from(modal.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+      if (!nodes.length) return;
+      const first = nodes[0]; const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    document.addEventListener("keydown", keydown);
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = ""; previous?.focus(); };
+  }, []);
+  const copy = language === "pt-BR" ? {
+    catalogRating: "Nota do catálogo", votesNotice: "Esta é uma nota do catálogo, não uma avaliação de usuários do AskFilmX.",
+    watch: "Onde assistir", region: "Região", subscription: "Assinatura", rent: "Aluguel", buy: "Compra", noWatch: "Sem dados de disponibilidade para esta região.",
+    trailer: "Trailer", play: "Reproduzir trailer", noTrailer: "Nenhum trailer adequado informado pelo catálogo.", credits: "Elenco e ficha técnica", crew: "Ficha técnica", related: "Você também pode gostar", loading: "Carregando dados complementares…", source: "Dados e imagens: TMDB. Disponibilidade sujeita a alterações; confirme no provedor.", noCredits: "Elenco e equipe não informados."
+  } : {
+    catalogRating: "Catalog rating", votesNotice: "This is a catalog rating, not an AskFilmX user review.",
+    watch: "Where to watch", region: "Region", subscription: "Subscription", rent: "Rent", buy: "Buy", noWatch: "No availability data for this region.",
+    trailer: "Trailer", play: "Play trailer", noTrailer: "No suitable trailer was provided by the catalog.", credits: "Cast and crew", crew: "Crew", related: "You may also like", loading: "Loading additional data…", source: "Data and images: TMDB. Availability may change; confirm with the provider.", noCredits: "Cast and crew not provided."
+  };
+  const trailer = extras.videos.find((video) => video.site === "YouTube" && /^[\w-]{11}$/.test(video.key) && video.type === "Trailer")
+    ?? extras.videos.find((video) => video.site === "YouTube" && /^[\w-]{11}$/.test(video.key));
+  const providerGroups: Array<[string, Provider[] | undefined]> = [[copy.subscription, extras.providers?.flatrate], [copy.rent, extras.providers?.rent], [copy.buy, extras.providers?.buy]];
   return (
     <div className="details-backdrop" role="presentation" onClick={onClose}>
       <section
+        ref={modalRef}
         className="details-modal"
         role="dialog"
         aria-modal="true"
@@ -339,8 +382,9 @@ function DetailsModal({
               <h2 id="details-title">{details.title}</h2>
               <div className="details-meta">
                 <span>{details.runtime ?? labels.runtimeUnavailable}</span>
-                <span>{details.imdbRating && details.imdbRating !== "N/A" ? `IMDb ${details.imdbRating}` : labels.ratingUnavailable}</span>
+                <span>{details.imdbRating && details.imdbRating !== "N/A" ? `${copy.catalogRating}: IMDb ${details.imdbRating}` : labels.ratingUnavailable}</span>
               </div>
+              <small className="catalog-note">{copy.votesNotice}</small>
               <p className="details-plot">{details.plot ?? labels.plotUnavailable}</p>
               <dl className="details-list">
                 <div><dt>{labels.genre}</dt><dd>{details.genre ?? labels.unavailable}</dd></div>
@@ -349,6 +393,17 @@ function DetailsModal({
                 <div><dt>{labels.type}</dt><dd>{details.mediaType === "series" ? labels.series : labels.movie}</dd></div>
               </dl>
               <button type="button" className={`gold-button detail-list-button ${saved ? "saved" : ""}`} onClick={() => onToggle(details)} aria-pressed={saved}>{saved ? `✓ ${labels.removeList}` : `＋ ${labels.addList}`}</button>
+              <div className="detail-extras" aria-busy={extras.loading}>
+                {extras.loading && <p className="extras-loading">{copy.loading}</p>}
+                <section><h3>{copy.trailer}</h3>{trailer ? (videoKey === trailer.key ? <div className="video-frame"><iframe src={`https://www.youtube-nocookie.com/embed/${trailer.key}?autoplay=1`} title={trailer.name} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div> : <button className="secondary-button" type="button" onClick={() => setVideoKey(trailer.key)}>▶ {copy.play}</button>) : !extras.loading && <p className="empty-copy">{copy.noTrailer}</p>}</section>
+                <section><div className="section-title-row"><h3>{copy.watch}</h3><label>{copy.region}<select value={region} onChange={(event) => onRegionChange(event.target.value)}><option value="BR">Brasil</option><option value="US">United States</option><option value="PT">Portugal</option><option value="GB">United Kingdom</option></select></label></div>
+                  {providerGroups.some(([, providers]) => providers?.length) ? <div className="provider-groups">{providerGroups.map(([name, providers]) => providers?.length ? <div key={name}><strong>{name}</strong><div className="provider-list">{providers.map((provider) => <span key={provider.provider_id}>{provider.logo_path && <img src={`https://image.tmdb.org/t/p/w92${provider.logo_path}`} alt="" />} {provider.provider_name}</span>)}</div></div> : null)}</div> : !extras.loading && <p className="empty-copy">{copy.noWatch}</p>}
+                  {extras.providers?.link && <a className="catalog-link" href={extras.providers.link} target="_blank" rel="noreferrer">TMDB ↗</a>}
+                </section>
+                <section><h3>{copy.credits}</h3>{extras.cast.length || extras.crew.length ? <><div className="credit-list">{extras.cast.slice(0, 8).map((person) => <span key={`cast-${person.id}`}><b>{person.name}</b>{person.character && <small>{person.character}</small>}</span>)}</div><h4>{copy.crew}</h4><p className="crew-line">{extras.crew.slice(0, 6).map((person) => `${person.name}${person.job ? ` (${person.job})` : ""}`).join(" · ")}</p></> : !extras.loading && <p className="empty-copy">{copy.noCredits}</p>}</section>
+                {extras.related.length > 0 && <section><h3>{copy.related}</h3><div className="related-list">{extras.related.slice(0, 6).map((item) => <button type="button" key={item.id} onClick={() => onSelectRelated(item)}>{item.poster !== "N/A" && <img src={item.poster} alt="" />}<span>{item.title}<small>{item.year}</small></span></button>)}</div></section>}
+                {extras.tmdbId && <p className="attribution">{copy.source}</p>}
+              </div>
               <section className="title-ai" aria-labelledby="title-ai-heading">
                 <div className="title-ai-heading">
                   <div><span className="details-kicker">{labels.aiGenerated}</span><h3 id="title-ai-heading">{labels.aiTitle}</h3></div>
@@ -409,6 +464,9 @@ export default function Home() {
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [localModel, setLocalModel] = useState(LOCAL_MODELS[0].id as string);
   const [localStatus, setLocalStatus] = useState<LocalStatus>({ phase: "idle", progress: 0, message: "O modelo só será baixado após sua escolha." });
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [region, setRegion] = useState("BR");
+  const [extras, setExtras] = useState<Extras>(emptyExtras);
   const importRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
   const searchControllerRef = useRef<AbortController | null>(null);
@@ -451,6 +509,54 @@ export default function Home() {
       setStatusMessage(translations[savedLanguage].initialStatus);
     }
   }, []);
+
+  useEffect(() => {
+    const storedTheme = window.localStorage.getItem("askfilmx:theme") === "light" ? "light" : "dark";
+    setTheme(storedTheme);
+    document.documentElement.dataset.theme = storedTheme;
+    const storedRegion = window.localStorage.getItem("askfilmx:region");
+    if (storedRegion && /^(BR|US|PT|GB)$/.test(storedRegion)) setRegion(storedRegion);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function highlights() {
+      try {
+        const response = await fetch(`/api/tmdb?operation=highlights&media=movie&page=1&language=${language === "pt-BR" ? "pt-BR" : "en-US"}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data.items)) return;
+        setVisibleItems(data.items.slice(0, 8).map((item: any) => ({ id: item.id, ids: item.ids, source: "tmdb", title: item.title, year: item.year ?? "—", type: item.mediaType === "series" ? "Série" : "Filme", poster: item.poster ?? "N/A" })));
+        setStatusMessage(language === "pt-BR" ? "Destaques desta semana no catálogo." : "This week's catalog highlights.");
+      } catch { /* Destaques são complementares; busca e lista continuam disponíveis. */ }
+    }
+    void highlights();
+    return () => controller.abort();
+  }, [language]);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next); document.documentElement.dataset.theme = next;
+    try { window.localStorage.setItem("askfilmx:theme", next); } catch {}
+  }
+
+  function changeRegion(next: string) {
+    setRegion(next);
+    try { window.localStorage.setItem("askfilmx:region", next); } catch {}
+    if (extras.tmdbId && selectedDetails) void loadExtras(extras.tmdbId, selectedDetails.mediaType, next);
+  }
+
+  function tmdbItems(data: any): CatalogItem[] {
+    return Array.isArray(data?.items) ? data.items.map((item: any) => ({ id: item.id, ids: item.ids, source: "tmdb", title: item.title, year: item.year ?? "—", type: item.mediaType === "series" ? "Série" : "Filme", poster: item.poster ?? "N/A" })) : [];
+  }
+
+  async function loadExtras(tmdbId: number, mediaType: "movie" | "series", targetRegion = region) {
+    const media = mediaType === "series" ? "tv" : "movie";
+    setExtras((current) => ({ ...emptyExtras, tmdbId, loading: true, providers: current.tmdbId === tmdbId ? current.providers : null }));
+    const query = (operation: string) => fetch(`/api/tmdb?operation=${operation}&media=${media}&id=${tmdbId}&language=${language === "pt-BR" ? "pt-BR" : "en-US"}`).then(async (response) => response.ok ? response.json() : null).catch(() => null);
+    const [credits, videos, providers, related] = await Promise.all([query("credits"), query("videos"), query("providers"), query("related")]);
+    const country = providers?.results?.[targetRegion] ?? null;
+    setExtras({ tmdbId, loading: false, partial: !credits || !videos || !providers || !related, cast: Array.isArray(credits?.cast) ? credits.cast : [], crew: Array.isArray(credits?.crew) ? credits.crew.filter((person: Credit) => ["Director", "Writer", "Creator", "Screenplay"].includes(person.job ?? "")) : [], videos: Array.isArray(videos?.results) ? videos.results : [], providers: country, related: tmdbItems(related) });
+  }
 
   useEffect(() => {
     const loaded = loadMyList();
@@ -623,12 +729,13 @@ export default function Home() {
     setIsDetailsLoading(true);
     setDetailsError("");
     setSelectedDetails(null);
+    setExtras({ ...emptyExtras, loading: true });
 
     try {
       let imdbId = item.ids?.imdb ?? (item.id.startsWith("tt") ? item.id : null);
       if (!imdbId && item.ids?.tmdb) {
         const media = item.type === "Série" ? "tv" : "movie";
-        const resolved = await fetch(`/api/tmdb?operation=resolve&media=${media}&id=${item.ids.tmdb}`, { signal: controller.signal });
+        const resolved = await fetch(`/api/tmdb?operation=resolve&media=${media}&id=${item.ids.tmdb}&language=${language === "pt-BR" ? "pt-BR" : "en-US"}`, { signal: controller.signal });
         const identifiers = await resolved.json();
         if (!resolved.ok || typeof identifiers.imdbId !== "string") throw new Error(labels.unableDetails);
         imdbId = identifiers.imdbId;
@@ -646,6 +753,15 @@ export default function Home() {
       const nextDetails = data as MovieDetails;
       setSelectedDetails(nextDetails);
       if (nextDetails.ids.imdb) setSummary(summaryCacheRef.current.get(`${nextDetails.ids.imdb}|${language}|openai|gpt-4.1-mini|title-context-v1`) ?? null);
+      let tmdbId = item.ids?.tmdb ?? null;
+      if (!tmdbId && nextDetails.ids.imdb) {
+        const media = nextDetails.mediaType === "series" ? "tv" : "movie";
+        const resolved = await fetch(`/api/tmdb?operation=resolve&media=${media}&imdbId=${nextDetails.ids.imdb}&language=${language === "pt-BR" ? "pt-BR" : "en-US"}`, { signal: controller.signal });
+        const identifiers = resolved.ok ? await resolved.json() : null;
+        tmdbId = typeof identifiers?.tmdbId === "number" ? identifiers.tmdbId : null;
+      }
+      if (tmdbId) void loadExtras(tmdbId, nextDetails.mediaType);
+      else setExtras(emptyExtras);
     } catch (error) {
       if (controller.signal.aborted || sequence !== detailsSequenceRef.current) return;
       setDetailsError(error instanceof Error ? error.message : labels.unableDetails);
@@ -660,6 +776,7 @@ export default function Home() {
     setSelectedDetails(null);
     setDetailsError("");
     setIsDetailsLoading(false);
+    setExtras(emptyExtras);
     titleAiControllerRef.current?.abort(); titleAiSequenceRef.current += 1; titleAiInFlightRef.current = false; setAiLoading(null);
   }
 
@@ -756,7 +873,7 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <header className="site-header" aria-label="Navegação principal">
+      <header className="site-header" aria-label={language === "pt-BR" ? "Navegação principal" : "Main navigation"}>
         <a className="brand" href="#top" aria-label="AskFilm - página inicial">
           <span className="film-reel" aria-hidden="true">
             <i />
@@ -767,11 +884,12 @@ export default function Home() {
           <span className="brand-wordmark">AF</span>
           <span className="brand-name">AskFilm</span>
         </a>
-        <nav className="main-nav" aria-label="Seções do AskFilm">
+        <nav className="main-nav" aria-label={language === "pt-BR" ? "Seções do AskFilmX" : "AskFilmX sections"}>
           <button type="button" onClick={() => { setShowMyList(false); setActiveMode("search"); }}>{labels.search}</button>
           <button type="button" onClick={() => setActiveMode("recommend")}>{labels.aiRecommendation}</button>
           <button type="button" onClick={() => { setShowMyList(true); scrollToResults(); }}>{labels.myList}{myList?.length ? ` (${myList.length})` : ""}</button>
-          <button type="button" onClick={() => setShowAiSettings(true)}>IA: {aiEngine === "local" ? "local" : "nuvem"}</button>
+          <button type="button" onClick={() => setShowAiSettings(true)}>{language === "pt-BR" ? "IA" : "AI"}: {aiEngine === "local" ? (language === "pt-BR" ? "local" : "device") : (language === "pt-BR" ? "nuvem" : "cloud")}</button>
+          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={language === "pt-BR" ? "Alternar tema claro ou escuro" : "Toggle light or dark theme"}>{theme === "dark" ? "☀" : "☾"}</button>
           <a href="#about-help">{labels.about}</a>
           <button type="button" className="language-toggle" onClick={toggleLanguage} aria-label="PT-BR / EN">
             {language === "pt-BR" ? "PT-BR" : "EN"}
@@ -785,11 +903,11 @@ export default function Home() {
 
       {showAiSettings && <div className="details-backdrop" role="presentation" onClick={() => setShowAiSettings(false)}>
         <section className="ai-settings" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title" onClick={(event) => event.stopPropagation()}>
-          <button type="button" className="close-details" onClick={() => setShowAiSettings(false)} aria-label="Fechar">×</button>
-          <p className="eyebrow">AskFilmX</p><h2 id="ai-settings-title">Mecanismo de IA</h2>
-          <p>A geração local é opcional, não exige login nem chave. O catálogo continua no backend protegido e o primeiro download exige internet.</p>
+          <button type="button" className="close-details" onClick={() => setShowAiSettings(false)} aria-label={labels.closeDetails}>×</button>
+          <p className="eyebrow">AskFilmX</p><h2 id="ai-settings-title">{language === "pt-BR" ? "Mecanismo de IA" : "AI engine"}</h2>
+          <p>{language === "pt-BR" ? "Escolha entre respostas na nuvem ou neste dispositivo. A IA só é acionada quando você pede." : "Choose cloud or on-device answers. AI only runs when you request it."}</p>
           <div className="engine-options">
-            <button type="button" className={aiEngine === "cloud" ? "active" : ""} onClick={() => void activateCloud()}><strong>OpenAI (nuvem)</strong><span>Pode gerar cobrança; só é chamada quando você pede.</span></button>
+            <button type="button" className={aiEngine === "cloud" ? "active" : ""} onClick={() => void activateCloud()}><strong>OpenAI ({language === "pt-BR" ? "nuvem" : "cloud"})</strong><span>{language === "pt-BR" ? "Rápida e sem download; pode gerar cobrança." : "Fast and download-free; may incur charges."}</span></button>
             <div className={aiEngine === "local" ? "engine-card active" : "engine-card"}><strong>WebLLM (neste dispositivo)</strong>
               <label htmlFor="local-model">Modelo e download aproximado</label>
               <select id="local-model" value={localModel} disabled={localStatus.phase === "downloading"} onChange={(event) => setLocalModel(event.target.value)}>{LOCAL_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label} · {model.size}</option>)}</select>
@@ -808,8 +926,8 @@ export default function Home() {
           <p>{labels.heroText}</p>
         </div>
 
-        <div className="interaction-panel" aria-label="Modos de interação">
-          <div className={`mode-toggle ${activeMode === "search" ? "is-search" : "is-recommend"}`} role="tablist" aria-label="Escolha um modo">
+        <div className="interaction-panel" aria-label={language === "pt-BR" ? "Modos de interação" : "Interaction modes"}>
+          <div className={`mode-toggle ${activeMode === "search" ? "is-search" : "is-recommend"}`} role="tablist" aria-label={language === "pt-BR" ? "Escolha um modo" : "Choose a mode"}>
             <button
               type="button"
               className={activeMode === "search" ? "active" : ""}
@@ -861,8 +979,8 @@ export default function Home() {
       <section className="results-section" id="results" aria-labelledby="results-title" ref={resultsRef}>
         <div className="results-heading">
           <div>
-            <p className="eyebrow">{showMyList ? labels.myList : labels.results}</p>
-            <h2 id="results-title">{showMyList ? labels.myList : labels.yourCuration}</h2>
+            <p className="eyebrow">{showMyList ? labels.myList : !hasSearched ? (language === "pt-BR" ? "Destaques" : "Highlights") : labels.results}</p>
+            <h2 id="results-title">{showMyList ? labels.myList : !hasSearched ? (language === "pt-BR" ? "Em alta esta semana" : "Trending this week") : labels.yourCuration}</h2>
           </div>
           <div className="status-badge" aria-live="polite">{showMyList ? labels.savedHere : statusMessage}</div>
         </div>
@@ -885,7 +1003,7 @@ export default function Home() {
         ) : <>
         {lastSearchQuery && <FilterBar activeFilter={activeFilter} labels={labels} onChange={handleFilterChange} />}
         {recommendationLimitations.length > 0 && <div className="recommendation-limitations" role="note"><ul>{recommendationLimitations.map((item) => <li key={item}>{item}</li>)}</ul></div>}
-        {hasSearched && (visibleItems.length > 0 || isLoading) ? (
+        {(hasSearched || visibleItems.length > 0) && (visibleItems.length > 0 || isLoading) ? (
           <>
             <ResultsGrid isLoading={isLoading} items={visibleItems} labels={labels} onSelect={handleSelectMovie} isSaved={matchesList} onToggle={toggleList} />
             <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} labels={labels} onPageChange={handlePageChange} />
@@ -919,10 +1037,15 @@ export default function Home() {
           onChat={askTitle}
           onNewChat={newChat}
           onRetry={() => question.trim() ? void callTitleAi("chat", question.trim()) : void callTitleAi("summary")}
+          extras={extras}
+          region={region}
+          language={language}
+          onRegionChange={changeRegion}
+          onSelectRelated={handleSelectMovie}
         />
       )}
 
-      <footer className="site-footer">{labels.footer}</footer>
+      <footer className="site-footer"><p>{labels.footer}</p><p>This product uses the TMDB API but is not endorsed or certified by TMDB. YouTube is used only to play catalog-linked videos after your interaction.</p></footer>
     </main>
   );
 }

@@ -85,6 +85,17 @@ test("normaliza busca TMDB sem exigir correspondência na OMDb", async () => {
   assert.equal(item.mediaType, "series");
 });
 
+test("preserva elenco e equipe técnica retornados pela TMDB", async () => {
+  globalThis.fetch = async (input) => {
+    assert.equal(new URL(String(input)).pathname, "/3/movie/42/credits");
+    return Response.json({ cast: [{ id: 1, name: "Atriz" }], crew: [{ id: 2, name: "Diretora", job: "Director" }] });
+  };
+  const result = await queryTmdb({ operation: "credits", media: "movie", id: "42" });
+  assert.ok("cast" in result && Array.isArray(result.cast));
+  assert.ok("crew" in result && Array.isArray(result.crew));
+  assert.equal((result.crew as Array<{ job: string }>)[0].job, "Director");
+});
+
 test("duas pesquisas rápidas mantêm respostas independentes do provedor", async () => {
   globalThis.fetch = async (input) => {
     const query = new URL(String(input)).searchParams.get("s")!;
