@@ -5,6 +5,7 @@ import { type CatalogItem, type Language, type MovieDetails } from "../lib/catal
 import { getLanguagePreference, getLegacyFavoriteIds, loadMyList, MAX_LIST_ITEMS, mergeMyLists, MY_LIST_KEY, parseMyListJson, persistMyList, safePosterUrl, saveLanguagePreference, type MyListItem } from "../lib/local-storage";
 import { isCatalogSearchPayload } from "../lib/validation";
 import { isRecommendationResponse } from "../lib/recommendation";
+import { LOCAL_MODELS, LocalAiManager, type LocalStatus } from "../lib/client/local-ai";
 
 type ActiveMode = "search" | "recommend";
 type FilterKey = "Todos" | "Filme" | "Série";
@@ -289,7 +290,7 @@ function DetailsModal({
   isLoading,
   error,
   labels,
-  onClose, saved, onToggle, summary, aiLoading, aiError, chat, question, onQuestionChange, onSummary, onChat, onNewChat, onRetry
+  onClose, saved, onToggle, summary, aiLoading, aiError, chat, question, engineLabel, onQuestionChange, onSummary, onChat, onNewChat, onRetry
 }: {
   details: MovieDetails | null;
   isLoading: boolean;
@@ -303,6 +304,7 @@ function DetailsModal({
   aiError: string;
   chat: ChatMessage[];
   question: string;
+  engineLabel: string;
   onQuestionChange: (value: string) => void;
   onSummary: () => void;
   onChat: (event: FormEvent<HTMLFormElement>) => void;
@@ -350,7 +352,7 @@ function DetailsModal({
               <section className="title-ai" aria-labelledby="title-ai-heading">
                 <div className="title-ai-heading">
                   <div><span className="details-kicker">{labels.aiGenerated}</span><h3 id="title-ai-heading">{labels.aiTitle}</h3></div>
-                  <label>{labels.engine}<select value="openai" disabled aria-label={labels.engine}><option value="openai">{labels.openAiEngine}</option></select></label>
+                  <label>{labels.engine}<select value="active" disabled aria-label={labels.engine}><option value="active">{engineLabel}</option></select></label>
                 </div>
                 <p className="ai-cost-note">{labels.paidNotice}</p>
                 <div className="ai-summary">
@@ -403,6 +405,10 @@ export default function Home() {
   const [recommendationLimitations, setRecommendationLimitations] = useState<string[]>([]);
   const [storageLimited, setStorageLimited] = useState(false);
   const [legacyIds, setLegacyIds] = useState<string[]>([]);
+  const [aiEngine, setAiEngine] = useState<"cloud" | "local">("cloud");
+  const [showAiSettings, setShowAiSettings] = useState(false);
+  const [localModel, setLocalModel] = useState(LOCAL_MODELS[0].id as string);
+  const [localStatus, setLocalStatus] = useState<LocalStatus>({ phase: "idle", progress: 0, message: "O modelo só será baixado após sua escolha." });
   const importRef = useRef<HTMLInputElement | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
   const searchControllerRef = useRef<AbortController | null>(null);
@@ -414,7 +420,21 @@ export default function Home() {
   const titleAiInFlightRef = useRef(false);
   const summaryCacheRef = useRef(new Map<string, SummaryState>());
   const recommendationInFlightRef = useRef<number | null>(null);
+  const localAiRef = useRef<LocalAiManager | null>(null);
   const labels = translations[language];
+
+  if (!localAiRef.current) localAiRef.current = new LocalAiManager(setLocalStatus);
+
+  async function activateLocal() {
+    setAiEngine("local");
+    try { await localAiRef.current!.load(localModel); }
+    catch { /* Status contains the actionable error; cloud is never selected implicitly. */ }
+  }
+
+  async function activateCloud() {
+    titleAiControllerRef.current?.abort(); searchControllerRef.current?.abort();
+    await localAiRef.current?.dispose(); setAiEngine("cloud");
+  }
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -652,6 +672,16 @@ export default function Home() {
     setAiLoading(action); setTitleAiError("");
     const sentHistory = chat.slice(-8);
     try {
+      if (aiEngine === "local") {
+        if (!selectedDetails) throw new Error(labels.aiError);
+        const local = await localAiRef.current!.title(action, selectedDetails, language, text, sentHistory);
+        if (sequence !== titleAiSequenceRef.current) return;
+        if (action === "summary") {
+          const value = { text: local.text, engine: local.engine, model: local.model, promptVersion: local.promptVersion };
+          summaryCacheRef.current.set(`${imdbId}|${language}|${local.engine}|${local.model}|${local.promptVersion}`, value); setSummary(value);
+        } else if (text) { setChat((current) => [...current, { role: "user" as const, content: text }, { role: "assistant" as const, content: local.text }].slice(-10)); setQuestion(""); }
+        return;
+      }
       const response = await fetch("/api/title-ai", { method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, imdbId, language, engine: "openai", question: text, history: action === "chat" ? sentHistory : undefined }) });
       const data = await response.json();
       if (sequence !== titleAiSequenceRef.current || controller.signal.aborted || selectedDetails?.ids.imdb !== imdbId) return;
@@ -685,7 +715,8 @@ export default function Home() {
     recommendationInFlightRef.current = sequence;
     setIsLoading(true); setHasSearched(true); setShowMyList(false); setVisibleItems([]); setCanBroaden(false); setRecommendationLimitations([]); setStatusMessage(labels.requestReceived); scrollToResults();
     try {
-      const response = await fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: prompt, language, broaden }), signal: controller.signal });
+      const criteria = aiEngine === "local" ? await localAiRef.current!.interpret(prompt, language) : undefined;
+      const response = await fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(criteria ? { criteria, language, broaden } : { text: prompt, language, broaden }), signal: controller.signal });
       const data = await response.json();
       if (sequence !== searchSequenceRef.current) return;
       if (!response.ok) throw new Error(data.error ?? labels.unableSearch);
@@ -740,6 +771,7 @@ export default function Home() {
           <button type="button" onClick={() => { setShowMyList(false); setActiveMode("search"); }}>{labels.search}</button>
           <button type="button" onClick={() => setActiveMode("recommend")}>{labels.aiRecommendation}</button>
           <button type="button" onClick={() => { setShowMyList(true); scrollToResults(); }}>{labels.myList}{myList?.length ? ` (${myList.length})` : ""}</button>
+          <button type="button" onClick={() => setShowAiSettings(true)}>IA: {aiEngine === "local" ? "local" : "nuvem"}</button>
           <a href="#about-help">{labels.about}</a>
           <button type="button" className="language-toggle" onClick={toggleLanguage} aria-label="PT-BR / EN">
             {language === "pt-BR" ? "PT-BR" : "EN"}
@@ -750,6 +782,24 @@ export default function Home() {
           </button>
         </nav>
       </header>
+
+      {showAiSettings && <div className="details-backdrop" role="presentation" onClick={() => setShowAiSettings(false)}>
+        <section className="ai-settings" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="close-details" onClick={() => setShowAiSettings(false)} aria-label="Fechar">×</button>
+          <p className="eyebrow">AskFilmX</p><h2 id="ai-settings-title">Mecanismo de IA</h2>
+          <p>A geração local é opcional, não exige login nem chave. O catálogo continua no backend protegido e o primeiro download exige internet.</p>
+          <div className="engine-options">
+            <button type="button" className={aiEngine === "cloud" ? "active" : ""} onClick={() => void activateCloud()}><strong>OpenAI (nuvem)</strong><span>Pode gerar cobrança; só é chamada quando você pede.</span></button>
+            <div className={aiEngine === "local" ? "engine-card active" : "engine-card"}><strong>WebLLM (neste dispositivo)</strong>
+              <label htmlFor="local-model">Modelo e download aproximado</label>
+              <select id="local-model" value={localModel} disabled={localStatus.phase === "downloading"} onChange={(event) => setLocalModel(event.target.value)}>{LOCAL_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label} · {model.size}</option>)}</select>
+              <button type="button" onClick={() => void activateLocal()} disabled={localStatus.phase === "downloading"}>{localStatus.phase === "error" ? "Tentar download novamente" : "Usar e baixar este modelo"}</button>
+            </div>
+          </div>
+          <div className={`local-status ${localStatus.phase}`} role="status" aria-live="polite"><span>{localStatus.message} Downloads podem falhar ou ser interrompidos.</span>{localStatus.phase === "downloading" && <><progress max="1" value={localStatus.progress} /><b>{Math.round(localStatus.progress * 100)}%</b></>}</div>
+          <p className="temporary-note">Requer navegador com WebGPU e contexto seguro (HTTPS/localhost). O cache técnico é administrado pelo WebLLM/navegador.</p>
+        </section>
+      </div>}
 
       <section className="hero-section" id="top" aria-labelledby="hero-title">
         <div className="hero-copy">
@@ -863,6 +913,7 @@ export default function Home() {
           aiError={titleAiError}
           chat={chat}
           question={question}
+          engineLabel={aiEngine === "local" ? `WebLLM · ${LOCAL_MODELS.find((model) => model.id === localModel)?.label ?? localModel} (local)` : labels.openAiEngine}
           onQuestionChange={setQuestion}
           onSummary={() => void callTitleAi("summary")}
           onChat={askTitle}
