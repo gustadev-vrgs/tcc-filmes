@@ -25,6 +25,7 @@ npm install
 
 ```env
 OMDB_API_KEY=sua_chave_omdb
+TMDB_API_KEY=sua_chave_tmdb
 OPENAI_API_KEY=sua_chave_openai
 ```
 
@@ -46,6 +47,7 @@ http://localhost:3000
 2. Importe o repositório na Vercel.
 3. Cadastre as variáveis de ambiente:
    - `OMDB_API_KEY`
+   - `TMDB_API_KEY`
    - `OPENAI_API_KEY`
 4. Faça o deploy.
 

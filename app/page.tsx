@@ -1,43 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { type CatalogItem, type Language, type MovieDetails } from "../lib/catalog";
+import { getLanguagePreference, saveLanguagePreference } from "../lib/local-storage";
+import { isCatalogSearchPayload } from "../lib/validation";
 
 type ActiveMode = "search" | "recommend";
-type Language = "pt-BR" | "en";
-type FilterKey = "Todos" | "Filme" | "Série" | "Anime" | "Doc";
-
-type SearchItem = {
-  Title: string;
-  Year: string;
-  imdbID: string;
-  Type: string;
-  Poster: string;
-};
-
-type CatalogItem = {
-  id: string;
-  title: string;
-  year: string;
-  type: Exclude<FilterKey, "Todos">;
-  poster: string;
-};
-
-type OmdbSearchPayload = {
-  Search: SearchItem[];
-  totalResults: string;
-};
-
-type MovieDetails = SearchItem & {
-  Rated?: string;
-  Released?: string;
-  Runtime?: string;
-  Genre?: string;
-  Director?: string;
-  Writer?: string;
-  Actors?: string;
-  Plot?: string;
-  imdbRating?: string;
-};
+type FilterKey = "Todos" | "Filme" | "Série";
 
 const translations = {
   "pt-BR": {
@@ -81,24 +50,6 @@ const suggestionChips: Record<Language, string[]> = {
   en: ["Dark psychological anime", "Nordic thriller like True Detective", "Family tearjerker movie", "90s British comedy"]
 };
 const filterOptions: FilterKey[] = ["Todos", "Filme", "Série"];
-
-function mapItemType(type: string): CatalogItem["type"] {
-  if (type === "series") {
-    return "Série";
-  }
-
-  return "Filme";
-}
-
-function mapSearchItem(item: SearchItem): CatalogItem {
-  return {
-    id: item.imdbID,
-    title: item.Title,
-    year: item.Year,
-    type: mapItemType(item.Type),
-    poster: item.Poster
-  };
-}
 
 function SearchBar({
   isLoading,
@@ -354,25 +305,25 @@ function DetailsModal({
         ) : details ? (
           <div className="details-content">
             <div className="details-poster">
-              {details.Poster && details.Poster !== "N/A" ? (
-                <img src={details.Poster} alt={`${labels.posterOf} ${details.Title}`} />
+              {details.poster && details.poster !== "N/A" ? (
+                <img src={details.poster} alt={`${labels.posterOf} ${details.title}`} />
               ) : (
                 <div className="poster-fallback">AskFilm</div>
               )}
             </div>
             <div className="details-copy">
-              <span className="details-kicker">{details.Type} • {details.Year}</span>
-              <h2 id="details-title">{details.Title}</h2>
+              <span className="details-kicker">{details.mediaType === "series" ? labels.series : labels.movie} • {details.year ?? "—"}</span>
+              <h2 id="details-title">{details.title}</h2>
               <div className="details-meta">
-                <span>{details.Runtime && details.Runtime !== "N/A" ? details.Runtime : labels.runtimeUnavailable}</span>
+                <span>{details.runtime ?? labels.runtimeUnavailable}</span>
                 <span>{details.imdbRating && details.imdbRating !== "N/A" ? `IMDb ${details.imdbRating}` : labels.ratingUnavailable}</span>
               </div>
-              <p className="details-plot">{details.Plot && details.Plot !== "N/A" ? details.Plot : labels.plotUnavailable}</p>
+              <p className="details-plot">{details.plot ?? labels.plotUnavailable}</p>
               <dl className="details-list">
-                <div><dt>{labels.genre}</dt><dd>{details.Genre && details.Genre !== "N/A" ? details.Genre : labels.unavailable}</dd></div>
-                <div><dt>{labels.direction}</dt><dd>{details.Director && details.Director !== "N/A" ? details.Director : details.Writer && details.Writer !== "N/A" ? details.Writer : labels.unavailable}</dd></div>
-                <div><dt>{labels.cast}</dt><dd>{details.Actors && details.Actors !== "N/A" ? details.Actors : labels.unavailable}</dd></div>
-                <div><dt>{labels.type}</dt><dd>{details.Type}</dd></div>
+                <div><dt>{labels.genre}</dt><dd>{details.genre ?? labels.unavailable}</dd></div>
+                <div><dt>{labels.direction}</dt><dd>{details.director ?? details.writer ?? labels.unavailable}</dd></div>
+                <div><dt>{labels.cast}</dt><dd>{details.actors ?? labels.unavailable}</dd></div>
+                <div><dt>{labels.type}</dt><dd>{details.mediaType === "series" ? labels.series : labels.movie}</dd></div>
               </dl>
             </div>
           </div>
@@ -400,6 +351,10 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(0);
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const resultsRef = useRef<HTMLElement | null>(null);
+  const searchControllerRef = useRef<AbortController | null>(null);
+  const detailsControllerRef = useRef<AbortController | null>(null);
+  const searchSequenceRef = useRef(0);
+  const detailsSequenceRef = useRef(0);
   const labels = translations[language];
 
   useEffect(() => {
@@ -411,8 +366,8 @@ export default function Home() {
   }, [language]);
 
   useEffect(() => {
-    const savedLanguage = window.localStorage.getItem("askfilm-language");
-    if (savedLanguage === "pt-BR" || savedLanguage === "en") {
+    const savedLanguage = getLanguagePreference();
+    if (savedLanguage) {
       setLanguage(savedLanguage);
       setStatusMessage(translations[savedLanguage].initialStatus);
     }
@@ -421,11 +376,9 @@ export default function Home() {
   function toggleLanguage() {
     const nextLanguage: Language = language === "pt-BR" ? "en" : "pt-BR";
     setLanguage(nextLanguage);
-    window.localStorage.setItem("askfilm-language", nextLanguage);
+    saveLanguagePreference(nextLanguage);
     setStatusMessage(translations[nextLanguage].initialStatus);
   }
-
-  const filteredItems = activeFilter === "Todos" ? visibleItems : visibleItems.filter((item) => item.type === activeFilter);
 
   function scrollToResults() {
     window.setTimeout(() => {
@@ -433,22 +386,38 @@ export default function Home() {
     }, 80);
   }
 
-  async function runTitleSearch(query: string, page = 1) {
+  async function runTitleSearch(query: string, page = 1, filter = activeFilter) {
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const sequence = ++searchSequenceRef.current;
     setIsLoading(true);
     setHasSearched(true);
     setStatusMessage(page === 1 ? labels.searchingTitles : `${labels.loadingPage} ${page}...`);
 
     try {
-      const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}&page=${page}`);
+      const media = filter === "Todos" ? "" : `&media=${filter === "Série" ? "series" : "movie"}`;
+      const response = await fetch(`/api/omdb?type=search&q=${encodeURIComponent(query)}&page=${page}${media}`, { signal: controller.signal });
       const data = await response.json();
+
+      if (sequence !== searchSequenceRef.current) return;
 
       if (!response.ok) {
         throw new Error(data.error ?? labels.unableSearch);
       }
 
-      const payload = data as OmdbSearchPayload;
-      const items = payload.Search.map(mapSearchItem);
-      const totalResults = Number(payload.totalResults);
+      if (!isCatalogSearchPayload(data)) {
+        throw new Error(labels.unableSearch);
+      }
+
+      const items = data.items.flatMap((item) => item.ids.imdb ? [{
+        id: item.ids.imdb,
+        title: item.title,
+        year: item.year ?? "—",
+        type: item.mediaType === "series" ? "Série" as const : "Filme" as const,
+        poster: item.poster ?? "N/A"
+      }] : []);
+      const totalResults = Number(data.totalResults);
       const nextTotalPages = Number.isFinite(totalResults) ? Math.ceil(totalResults / 10) : 0;
 
       setVisibleItems(items);
@@ -460,12 +429,13 @@ export default function Home() {
       );
       scrollToResults();
     } catch (error) {
+      if (controller.signal.aborted || sequence !== searchSequenceRef.current) return;
       setVisibleItems([]);
       setCurrentPage(1);
       setTotalPages(0);
       setStatusMessage(error instanceof Error ? error.message : labels.unableSearch);
     } finally {
-      setIsLoading(false);
+      if (sequence === searchSequenceRef.current) setIsLoading(false);
     }
   }
 
@@ -486,17 +456,23 @@ export default function Home() {
       return;
     }
 
-    await runTitleSearch(query, 1);
+    await runTitleSearch(query, 1, "Todos");
   }
 
   async function handleSelectMovie(item: CatalogItem) {
+    detailsControllerRef.current?.abort();
+    const controller = new AbortController();
+    detailsControllerRef.current = controller;
+    const sequence = ++detailsSequenceRef.current;
     setIsDetailsLoading(true);
     setDetailsError("");
     setSelectedDetails(null);
 
     try {
-      const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(item.id)}`);
+      const response = await fetch(`/api/omdb?type=details&id=${encodeURIComponent(item.id)}`, { signal: controller.signal });
       const data = await response.json();
+
+      if (sequence !== detailsSequenceRef.current) return;
 
       if (!response.ok) {
         throw new Error(data.error ?? labels.unableDetails);
@@ -504,13 +480,16 @@ export default function Home() {
 
       setSelectedDetails(data as MovieDetails);
     } catch (error) {
+      if (controller.signal.aborted || sequence !== detailsSequenceRef.current) return;
       setDetailsError(error instanceof Error ? error.message : labels.unableDetails);
     } finally {
-      setIsDetailsLoading(false);
+      if (sequence === detailsSequenceRef.current) setIsDetailsLoading(false);
     }
   }
 
   function closeDetails() {
+    detailsControllerRef.current?.abort();
+    detailsSequenceRef.current += 1;
     setSelectedDetails(null);
     setDetailsError("");
     setIsDetailsLoading(false);
@@ -538,6 +517,11 @@ export default function Home() {
     }
 
     void runTitleSearch(lastSearchQuery, page);
+  }
+
+  function handleFilterChange(filter: FilterKey) {
+    setActiveFilter(filter);
+    if (lastSearchQuery) void runTitleSearch(lastSearchQuery, 1, filter);
   }
 
   return (
@@ -633,10 +617,10 @@ export default function Home() {
           </div>
           <div className="status-badge" aria-live="polite">{statusMessage}</div>
         </div>
-        {visibleItems.length > 0 && <FilterBar activeFilter={activeFilter} labels={labels} onChange={setActiveFilter} />}
+        {(visibleItems.length > 0 || lastSearchQuery) && <FilterBar activeFilter={activeFilter} labels={labels} onChange={handleFilterChange} />}
         {hasSearched && (visibleItems.length > 0 || isLoading) ? (
           <>
-            <ResultsGrid isLoading={isLoading} items={filteredItems} labels={labels} onSelect={handleSelectMovie} />
+            <ResultsGrid isLoading={isLoading} items={visibleItems} labels={labels} onSelect={handleSelectMovie} />
             <Pagination currentPage={currentPage} totalPages={totalPages} isLoading={isLoading} labels={labels} onPageChange={handlePageChange} />
           </>
         ) : (
