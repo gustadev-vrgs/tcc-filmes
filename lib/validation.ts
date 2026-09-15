@@ -1,27 +1,38 @@
-import type { OmdbSearchItem } from "./catalog";
-
-export type OmdbSearchPayload = {
-  Search: OmdbSearchItem[];
-  totalResults: string;
+export type CatalogSearchPayload = {
+  items: Array<{
+    id: string;
+    ids: { imdb: string | null; tmdb: number | null };
+    mediaType: "movie" | "series";
+    title: string;
+    year: string | null;
+    poster: string | null;
+    plot: string | null;
+    source: "omdb" | "tmdb";
+    partial: boolean;
+  }>;
+  totalResults: number;
+  totalPages: number;
+  page: number;
+  source: "omdb";
 };
 
-function isSearchItem(value: unknown): value is OmdbSearchItem {
-  if (!value || typeof value !== "object") return false;
-
-  const item = value as Record<string, unknown>;
-  return ["Title", "Year", "imdbID", "Type", "Poster"].every(
-    (field) => typeof item[field] === "string"
-  );
-}
-
-export function isOmdbSearchPayload(value: unknown): value is OmdbSearchPayload {
+export function isCatalogSearchPayload(value: unknown): value is CatalogSearchPayload {
   if (!value || typeof value !== "object") return false;
 
   const payload = value as Record<string, unknown>;
   return (
-    Array.isArray(payload.Search) &&
-    payload.Search.every(isSearchItem) &&
-    typeof payload.totalResults === "string" &&
-    /^\d+$/.test(payload.totalResults)
+    Array.isArray(payload.items) &&
+    payload.items.every((item) => {
+      if (!item || typeof item !== "object") return false;
+      const entry = item as Record<string, unknown>;
+      const ids = entry.ids && typeof entry.ids === "object" ? entry.ids as Record<string, unknown> : null;
+      return typeof entry.id === "string" && typeof entry.title === "string" &&
+        (entry.year === null || typeof entry.year === "string") &&
+        (entry.poster === null || typeof entry.poster === "string") &&
+        (entry.mediaType === "movie" || entry.mediaType === "series") && ids !== null &&
+        (ids.imdb === null || typeof ids.imdb === "string");
+    }) &&
+    Number.isInteger(payload.totalResults) && Number.isInteger(payload.totalPages) && Number.isInteger(payload.page) &&
+    payload.source === "omdb"
   );
 }

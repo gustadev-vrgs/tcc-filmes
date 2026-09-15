@@ -21,12 +21,12 @@ O AskFilmX é uma aplicação web bilíngue (PT-BR e inglês), responsiva, para 
 - Rotas: `/` (`app/page.tsx`) e `GET /api/omdb` (`app/api/omdb/route.ts`), com operações `search` e `details`.
 - A página atual já oferece alternância PT-BR/EN, busca OMDb real, paginação, filtros filme/série e modal de detalhes. A preferência de idioma já persiste localmente.
 - O formulário de recomendação por IA é apenas um estado informativo: não existe rota OpenAI e nenhum resultado de IA é apresentado. “Minha lista” no cabeçalho ainda é apenas um link para a seção de resultados.
-- A rota OMDb já protege `OMDB_API_KEY` no servidor, faz validações básicas e usa revalidação técnica de uma hora. Não existem rotas TMDB/OpenAI nem integração WebLLM na aplicação Next.js.
+- As rotas OMDb e TMDB protegem as respectivas chaves no servidor, restringem operações, validam parâmetros/respostas e aplicam cache técnico limitado a dados públicos. Não existe rota OpenAI nem integração WebLLM na aplicação Next.js.
 - A configuração de imagens libera somente `m.media-amazon.com`; imagens TMDB exigirão configuração explícita quando forem integradas.
 
 ### Scripts, CI e testes
 
-- Scripts npm: `dev`, `build`, `start` e `lint`. O script chamado `lint` executa somente `tsc --noEmit --incremental false`; não há ESLint nem suíte de testes automatizados.
+- Scripts npm: `dev`, `build`, `start`, `lint` e `test`. O script chamado `lint` executa somente `tsc --noEmit --incremental false`; os testes de catálogo usam o executor nativo do Node, sem dependência adicional.
 - O workflow `.github/workflows/ci.yml` roda `npm ci`, verificação TypeScript e build em Node 22 para pushes e pull requests direcionados à `main`, além de execução manual.
 - Não há código de autenticação ou banco na aplicação Next.js e as dependências instaladas não incluem SDK de autenticação ou banco. Portanto, não houve remoção especulativa de arquivos ou pacotes.
 
@@ -74,7 +74,7 @@ Nesta etapa, `lib/catalog.ts`, `lib/validation.ts` e `lib/local-storage.ts` inic
 ## 5. Sequência de implementação
 
 1. **Preparação estrutural (concluída):** inventário, escopo, tipos de catálogo, validação da busca e módulo seguro de persistência local.
-2. **Catálogo e detalhes:** extrair clientes server-only, endurecer contratos/erros, integrar TMDB no backend e trazer somente detalhes úteis do protótipo (provedores, elenco e trailer), com fallbacks.
+2. **Catálogo e detalhes (base concluída):** clientes server-only OMDb/TMDB, contratos normalizados, erros e operações de catálogo estão disponíveis. A apresentação dos complementos TMDB na tela de detalhes ainda precisa ser implementada com fallbacks.
 3. **Minha lista:** conectar controles em cards/detalhes, criar visualização vazia/preenchida e sincronizar a mesma aba pelo evento de storage/custom event. Nunca enviar a lista ao servidor.
 4. **IA hospedada:** criar rota Next.js validada para OpenAI, controlar tamanho/forma da entrada e transformar recomendações em títulos reais resolvidos pelo catálogo. Exibir erros reais; nunca cards simulados.
 5. **WebLLM opcional:** avaliar compatibilidade/browser, consentimento para download e fallback. Não bloquear a experiência principal nem armazenar chaves.
@@ -90,15 +90,27 @@ Nesta etapa, `lib/catalog.ts`, `lib/validation.ts` e `lib/local-storage.ts` inic
 - [x] Validação defensiva da resposta de busca OMDb antes do mapeamento para a interface.
 - [x] Centralização da preferência de idioma sem quebrar a chave já utilizada (`askfilm-language`).
 - [x] Contrato local de Minha lista preparado e deduplicado; ainda não conectado visualmente.
+- [x] Serviço OMDb HTTPS com timeout, busca paginada, filtro por tipo, detalhes, normalização, validação e erros classificados.
+- [x] Serviço TMDB HTTPS restrito a busca, descoberta, relacionados, destaques, elenco, vídeos, provedores e resolução IMDb/TMDB.
+- [x] Busca da interface conectada ao contrato normalizado, com filtro aplicado pelo provedor antes da paginação e cancelamento/descarte de respostas antigas.
+- [x] Testes automatizados com provedores simulados para paginação, pôster ausente, erros, timeout, resposta inválida, dados parciais e pesquisas concorrentes.
 
 ## 7. Pendências reais e dependências externas
 
-- [ ] Implementar `GET /api/tmdb` (ou endpoints específicos) com `TMDB_API_KEY` apenas no servidor.
 - [ ] Implementar endpoint OpenAI com `OPENAI_API_KEY` apenas no servidor e resposta estruturada/validada.
 - [ ] Conectar Minha lista aos cards, ao modal e à navegação.
 - [ ] Decidir e documentar se YouTube Data API é necessária; trailers TMDB devem ser o primeiro caminho.
 - [ ] Avaliar WebLLM como melhoria opcional, não como requisito para concluir catálogo/IA hospedada.
 - [ ] Migrar seletivamente detalhes, provedores, trailer, elenco e recursos de acessibilidade do protótipo.
-- [ ] Criar testes automatizados além da checagem TypeScript/build existente.
-- [ ] Atualizar `.env.example` quando TMDB for realmente integrado; hoje somente OMDb está operacional e OpenAI está declarada, mas ainda sem rota.
 - [ ] Confirmar as quotas, chaves válidas e variáveis da Vercel para OMDb, TMDB e OpenAI. Builds validam estrutura, mas não comprovam chamadas aos serviços sem credenciais.
+
+## 8. Dependência e degradação dos provedores
+
+| Recurso | Provedor necessário | Comportamento sem configuração ou dado complementar |
+| --- | --- | --- |
+| Busca por título, paginação e detalhes atuais | OMDb | A API responde `configuration` e HTTP 503; a interface mostra configuração pendente e não cria resultados. |
+| Busca e descoberta por filtros, relacionados e destaques | TMDB | A API responde `configuration` e HTTP 503. A busca OMDb continua disponível independentemente. |
+| Elenco com fotos, vídeos e onde assistir | TMDB | O título OMDb não é descartado. A seção complementar pode explicar que o recurso está indisponível ou que não houve correspondência. |
+| Resolução de IDs | TMDB | IDs IMDb e TMDB permanecem campos separados. Uma resolução sem correspondência retorna `null`, sem invalidar o título original. |
+
+Respostas normalizadas carregam `source`, `mediaType`, `ids.imdb`, `ids.tmdb` e o marcador `partial`. Pôster e sinopse ausentes são `null`, não títulos fictícios. A cache é a revalidação do `fetch` do Next.js (cinco minutos na OMDb de busca, uma hora em detalhes; dez minutos para listas TMDB, uma hora para complementos e um dia para resolução), sem banco ou cache de usuário.

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit --incremental false"
+    "lint": "tsc --noEmit --incremental false",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test .test-build/tests"
   },
   "dependencies": {
     "@types/node": "latest",

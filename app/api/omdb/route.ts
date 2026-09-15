@@ -1,99 +1,31 @@
 import { NextResponse } from "next/server";
-
-type OmdbSearchItem = {
-  Title: string;
-  Year: string;
-  imdbID: string;
-  Type: string;
-  Poster: string;
-};
-
-type OmdbSearchSuccess = {
-  Response: "True";
-  Search: OmdbSearchItem[];
-  totalResults: string;
-};
-
-type OmdbDetailsSuccess = OmdbSearchItem & {
-  Response: "True";
-  Plot?: string;
-  Genre?: string;
-  Director?: string;
-  Actors?: string;
-  imdbRating?: string;
-};
-
-type OmdbError = {
-  Response: "False";
-  Error: string;
-};
-
-type OmdbResponse = OmdbSearchSuccess | OmdbDetailsSuccess | OmdbError;
-
-const OMDB_URL = "https://www.omdbapi.com/";
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status });
-}
+import { getOmdbDetails, searchOmdb } from "../../../lib/server/omdb";
+import { imdbIdParam, pageParam, textParam, type MediaType } from "../../../lib/server/params";
+import { ProviderError } from "../../../lib/server/provider-error";
 
 export async function GET(request: Request) {
-  const apiKey = process.env.OMDB_API_KEY;
-
-  if (!apiKey) {
-    return jsonError("A chave da OMDb não está configurada no servidor.", 500);
-  }
-
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
-  const q = searchParams.get("q")?.trim();
-  const id = searchParams.get("id")?.trim();
-  const page = searchParams.get("page") ?? "1";
-
-  const omdbParams = new URLSearchParams({ apikey: apiKey });
-
-  if (type === "search") {
-    if (!q) {
-      return jsonError("Informe um título para buscar usando o parâmetro q.", 400);
-    }
-
-    const pageNumber = Number(page);
-
-    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
-      return jsonError("Informe uma página válida maior ou igual a 1.", 400);
-    }
-
-    omdbParams.set("s", q);
-    omdbParams.set("page", String(pageNumber));
-  } else if (type === "details") {
-    if (!id) {
-      return jsonError("Informe um IMDb ID usando o parâmetro id.", 400);
-    }
-
-    omdbParams.set("i", id);
-    omdbParams.set("plot", "full");
-  } else {
-    return jsonError("Tipo de busca inválido. Use type=search ou type=details.", 400);
-  }
-
   try {
-    const response = await fetch(`${OMDB_URL}?${omdbParams.toString()}`, {
-      next: { revalidate: 60 * 60 }
-    });
-
-    if (!response.ok) {
-      return jsonError("Não foi possível consultar a OMDb no momento.", response.status);
+    if (type === "search") {
+      const media = searchParams.get("media");
+      if (media !== null && media !== "movie" && media !== "series") {
+        throw new ProviderError("invalid_response", "Parâmetro media deve ser movie ou series.", "omdb", 400);
+      }
+      return NextResponse.json(await searchOmdb({
+        query: textParam(searchParams.get("q"), "q"),
+        page: pageParam(searchParams.get("page")),
+        mediaType: media as MediaType | undefined
+      }));
     }
-
-    const data = (await response.json()) as OmdbResponse;
-
-    if (data.Response === "False") {
-      const status = data.Error.toLowerCase().includes("not found") ? 404 : 400;
-      return jsonError(data.Error, status);
+    if (type === "details") {
+      return NextResponse.json(await getOmdbDetails(imdbIdParam(searchParams.get("id"))));
     }
-
-    return NextResponse.json(data);
+    throw new ProviderError("invalid_response", "Operação inválida. Use search ou details.", "omdb", 400);
   } catch (error) {
-    console.error("Erro ao consultar a OMDb:", error);
-    return jsonError("Erro inesperado ao consultar a OMDb.", 500);
+    if (error instanceof ProviderError) {
+      return NextResponse.json({ error: error.message, code: error.code, provider: error.provider }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Erro inesperado ao consultar a OMDb.", code: "unavailable", provider: "omdb" }, { status: 500 });
   }
 }
